@@ -1,0 +1,10 @@
+# Netlify configuration for the Robot Behavior QA tracker.
+# No build step — this is a static HTML file plus one serverless function.
+
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+# The function declares its own URL (/api/generate-report) via the
+# `export const config = { path: ... }` line inside the function file,
+# so no redirect rules are needed here.
