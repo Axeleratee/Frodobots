@@ -799,18 +799,22 @@ html, body {
 
 <!-- Supabase browser client (the anon/publishable key is public by design; data is protected by RLS) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Your project's settings. Kept in a separate file so app updates never overwrite them. -->
+<script src="config.js"></script>
 <script>
 // ===================== SUPABASE CONFIG =====================
 // These two values are PUBLIC and safe to keep here. Your data is protected
 // by Supabase login + Row Level Security, NOT by hiding these values.
 // Get them from your Supabase project: Project Settings -> API (or the
 // "Connect" dialog): the Project URL and the publishable / anon key.
-const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR-PUBLISHABLE-OR-ANON-KEY';
+// Values come from config.js when it exists; the placeholders are the fallback.
+const APP_CONFIG = (typeof window !== 'undefined' && window.APP_CONFIG) ? window.APP_CONFIG : {};
+const SUPABASE_URL = APP_CONFIG.SUPABASE_URL || 'https://YOUR-PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = APP_CONFIG.SUPABASE_ANON_KEY || 'YOUR-PUBLISHABLE-OR-ANON-KEY';
 // Users sign in with a USERNAME. The app turns it into
 //   <username>@LOGIN_EMAIL_DOMAIN
 // and that is the email you use when creating the user in Supabase.
-const LOGIN_EMAIL_DOMAIN = 'robotqa.local';
+const LOGIN_EMAIL_DOMAIN = APP_CONFIG.LOGIN_EMAIL_DOMAIN || 'robotqa.local';
 // ===========================================================
 const sb = (window.supabase && SUPABASE_URL.indexOf('YOUR-PROJECT') === -1)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
