@@ -425,6 +425,9 @@ html, body {
         <input type="text" id="f-robot-other" placeholder="Robot name" style="width:100%; margin-top:6px; display:none;">
       </div>
     </div>
+
+    <div id="f-dup" style="display:none; margin-top:10px;"></div>
+
     <div style="margin-top:10px;">
       <label style="font-size:13px; display:flex; align-items:center; gap:8px; cursor:pointer;">
         <input type="checkbox" id="f-nodata" style="width:auto; margin:0;">
@@ -1262,6 +1265,7 @@ async function loadEntries() {
   if (typeof renderProgBotOptions === 'function') renderProgBotOptions();
   render();
   renderRecent();
+  if (typeof renderDupNotice === 'function') renderDupNotice();
 }
 
 // The database owns the row id; strip the client id before storing the blob.
@@ -2119,6 +2123,78 @@ document.getElementById('f-nodata').addEventListener('change', (e) => {
   document.getElementById('f-detail-fields').style.display = e.target.checked ? 'none' : 'block';
 });
 
+// What is already logged for this date + bot? Shown live in the form so you
+// never have to go look it up before typing. Multiple entries per bot per day
+// are legitimate - this informs, it does not block.
+function entriesFor(dateISO, robot, excludeId) {
+  if (!dateISO || !robot) return [];
+  return entries.filter(function (e) {
+    return e.date === dateISO && e.robot === robot && e.id !== excludeId;
+  });
+}
+
+// A signature for "the exact same observation again" - the accidental
+// double-entry case. Different tasks or issues mean a real second entry.
+function entrySignature(task, issue, noData) {
+  return (noData ? 'ND' : 'D') + '|' +
+    (task || []).slice().sort().join(',') + '|' +
+    (issue || []).slice().sort().join(',');
+}
+
+function currentFormRobot() {
+  var sel = document.getElementById('f-robot');
+  if (!sel) return '';
+  return sel.value === '__other'
+    ? (document.getElementById('f-robot-other') || {}).value.trim()
+    : sel.value;
+}
+
+function renderDupNotice() {
+  var box = document.getElementById('f-dup');
+  if (!box) return;
+  var date = (document.getElementById('f-date') || {}).value || '';
+  var robot = currentFormRobot();
+
+  if (!date || !robot) { box.style.display = 'none'; box.innerHTML = ''; return; }
+
+  var found = entriesFor(date, robot, editingId);
+  box.style.display = 'block';
+
+  if (!found.length) {
+    box.innerHTML = '<div style="display:flex; align-items:center; gap:8px; font-size:12.5px; padding:8px 11px; ' +
+      'background:rgba(95,224,160,0.07); border:1px solid rgba(95,224,160,0.22); border-radius:8px; color:var(--text-secondary);">' +
+      '<span style="color:var(--fb-green); font-weight:600;">\u2713</span>' +
+      'Nothing logged yet for <b style="color:var(--text-primary);">' + esc(robot) + '</b> on <b style="color:var(--text-primary);">' + esc(date) + '</b>.' +
+      '</div>';
+    return;
+  }
+
+  var rows = found.map(function (e) {
+    var what = (e.noData || issueList(e).includes('nodata'))
+      ? '<span style="color:var(--text-danger);">No data</span>'
+      : esc(taskList(e).join(', ') || '\u2014');
+    var who = e.loggedBy ? ' <span style="color:var(--text-muted);">by ' + esc(e.loggedBy) + '</span>' : '';
+    return '<div style="display:flex; align-items:center; gap:8px; padding:5px 0; border-top:1px solid var(--border);">' +
+      '<span style="flex:1; min-width:0; word-break:break-word;">' + what + who + '</span>' +
+      (lateBadge(e) || '') +
+      '<button type="button" class="dup-edit" data-id="' + escAttr(e.id) + '" ' +
+      'style="font-size:11px; padding:2px 9px; background:transparent;">Edit</button>' +
+      '</div>';
+  }).join('');
+
+  box.innerHTML = '<div style="font-size:12.5px; padding:8px 11px; ' +
+    'background:rgba(217,169,63,0.08); border:1px solid rgba(217,169,63,0.28); border-radius:8px;">' +
+    '<div style="color:#d9a93f; font-weight:600;">Already logged \u00b7 ' + found.length + ' entr' + (found.length === 1 ? 'y' : 'ies') +
+    ' <span style="color:var(--text-secondary); font-weight:400;">for ' + esc(robot) + ' on ' + esc(date) + '</span></div>' +
+    rows +
+    '<div style="color:var(--text-muted); font-size:11.5px; margin-top:6px;">Adding another is fine if it is a different task \u2014 edit the one above instead if you meant to change it.</div>' +
+    '</div>';
+
+  Array.prototype.forEach.call(box.querySelectorAll('.dup-edit'), function (b) {
+    b.addEventListener('click', function () { startEdit(b.dataset.id); });
+  });
+}
+
 function resetForm() {
   taskMS.clear();
   issueMS.clear();
@@ -2133,6 +2209,7 @@ function resetForm() {
   editingId = null;
   document.getElementById('btn-save').textContent = 'Save observation';
   document.getElementById('btn-cancel-edit').style.display = 'none';
+  renderDupNotice();
 }
 
 function startEdit(id) {
@@ -2167,6 +2244,7 @@ function startEdit(id) {
   document.getElementById('f-links').value = linkList(e).join('\n');
 
   editingId = id;
+  renderDupNotice();
   document.getElementById('btn-save').textContent = 'Update observation';
   document.getElementById('btn-cancel-edit').style.display = 'inline-block';
 
@@ -2204,6 +2282,28 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   }
   if (!noData && issue.length === 0) issue = ['none'];
 
+  // Only an EXACT repeat is worth stopping for - same bot, same date, same
+  // tasks, same issues. A different task on the same day is a real entry.
+  const sig = entrySignature(task, issue, noData);
+  const twin = entriesFor(date, robot, editingId).find(function (e) {
+    return entrySignature(taskList(e), issueList(e), !!e.noData || issueList(e).includes('nodata')) === sig;
+  });
+  if (twin) {
+    const what = noData ? 'No data' : (task.join(', ') || 'no task');
+    if (!confirm('This exact observation is already logged:\n\n' +
+                 robot + ' \u00b7 ' + date + '\n' + what +
+                 '\n\nSave it a second time anyway?')) {
+      status.style.color = 'var(--text-secondary)';
+      status.textContent = 'Nothing saved \u2014 that entry already exists.';
+      setTimeout(function () { status.textContent = ''; }, 3500);
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btn-save');
+  if (btn.disabled) return;          // a second click while the first is in flight
+  btn.disabled = true;
+
   const wasEditing = !!editingId;
   status.style.color = 'var(--text-secondary)';
   status.textContent = wasEditing ? 'Updating…' : 'Saving…';
@@ -2222,8 +2322,10 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   } catch (e) {
     status.style.color = 'var(--text-danger)';
     status.textContent = 'Save failed: ' + (e && e.message ? e.message : 'unknown error');
+    btn.disabled = false;
     return;
   }
+  btn.disabled = false;
 
   renderRobotFilter();
   renderProgBotOptions();
@@ -2234,6 +2336,14 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   status.style.color = 'var(--text-secondary)';
   status.textContent = wasEditing ? 'Updated.' : 'Saved.';
   setTimeout(() => status.textContent = '', 2000);
+});
+
+// Keep the "already logged" strip in step with the date / robot pickers.
+['f-date', 'f-robot', 'f-robot-other'].forEach(function (id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('change', renderDupNotice);
+  el.addEventListener('input', renderDupNotice);
 });
 
 ['filter-robot','filter-issue','filter-search','filter-from','filter-to','filter-user','filter-task','filter-late'].forEach(id => {
