@@ -374,7 +374,120 @@ html, body {
 .fb-app *::-webkit-scrollbar-thumb:hover { background: rgba(158,176,196,0.30); background-clip: content-box; }
 .fb-app input:focus-visible, .fb-app select:focus-visible, .fb-app textarea:focus-visible { box-shadow: var(--ring); }
 .fb-app a { color: var(--accent); }
-@media (prefers-reduced-motion: reduce) { .fb-app * { transition: none !important; } }
+/* =====================================================================
+   MOTION
+   One orchestrated entrance (the boot sequence), and after that motion
+   only ever answers something the user did. Durations are short enough
+   to feel like response, not performance.
+   ===================================================================== */
+.fb-app {
+  --dur-press: 90ms;    /* finger-down feedback */
+  --dur-micro: 150ms;   /* hover, focus, colour */
+  --dur-reveal: 260ms;  /* menus, rows, panels */
+  --dur-page: 340ms;    /* page / tab change */
+  --dur-boot: 560ms;    /* the one entrance */
+  --ease: cubic-bezier(.22, .8, .3, 1);          /* decelerating: UI default */
+  --ease-soft: cubic-bezier(.65, 0, .35, 1);
+  --ease-pop: cubic-bezier(.2, 1.3, .35, 1);     /* slight overshoot: confirmations */
+}
+
+@keyframes fbRise   { from { opacity:0; transform:translateY(8px);  } to { opacity:1; transform:none; } }
+@keyframes fbFade   { from { opacity:0; } to { opacity:1; } }
+@keyframes fbPopIn  { from { opacity:0; transform:scale(.96) translateY(-4px); } to { opacity:1; transform:none; } }
+@keyframes fbCellIn { from { opacity:0; transform:scale(.55); } to { opacity:1; transform:none; } }
+@keyframes fbFlash  {
+  0%   { background: rgba(95,224,160,0.26); }
+  100% { background: transparent; }
+}
+@keyframes fbShimmer { from { background-position: -420px 0; } to { background-position: 420px 0; } }
+@keyframes fbSpin    { to { transform: rotate(360deg); } }
+@keyframes fbPulse   { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+
+/* ---- the one orchestrated entrance: first paint after sign-in ---- */
+.fb-app.fb-boot > #auth-bar,
+.fb-app.fb-boot > .fb-header,
+.fb-app.fb-boot > .fb-tabs { animation: fbRise var(--dur-boot) var(--ease) both; }
+.fb-app.fb-boot > .fb-header { animation-delay: 40ms; }
+.fb-app.fb-boot > .fb-tabs   { animation-delay: 110ms; }
+.fb-app.fb-boot .fb-card     { animation: fbRise var(--dur-boot) var(--ease) both;
+                               animation-delay: calc(170ms + var(--i, 0) * 55ms); }
+
+/* ---- page / tab change ---- */
+.fb-app .fb-page-in { animation: fbRise var(--dur-page) var(--ease) both; }
+
+/* ---- sliding tab indicator (only once JS has placed it) ---- */
+.fb-tabs { position: relative; }
+.fb-tab-ind {
+  position: absolute; top: 5px; left: 0; height: calc(100% - 10px);
+  border-radius: 8px; background: var(--fill-primary);
+  box-shadow: 0 6px 16px -8px rgba(95,224,160,0.55);
+  transform: translateX(var(--x, 0px)); width: var(--w, 0px);
+  transition: transform var(--dur-page) var(--ease), width var(--dur-page) var(--ease);
+  pointer-events: none; z-index: 0;
+}
+.fb-tabs.has-ind button.fb-tab { position: relative; z-index: 1; }
+.fb-tabs.has-ind button.fb-tab-active,
+.fb-tabs.has-ind button.fb-tab-active:hover { background: transparent; box-shadow: none; }
+
+/* ---- micro-interactions: press and hover answer the pointer ---- */
+.fb-app button { transition: background var(--dur-micro) var(--ease), color var(--dur-micro) var(--ease),
+                             border-color var(--dur-micro) var(--ease), box-shadow var(--dur-micro) var(--ease),
+                             transform var(--dur-press) var(--ease), opacity var(--dur-micro) var(--ease); }
+.fb-app button:active:not(:disabled) { transform: translateY(1px) scale(.985); }
+.fb-app .hm-cell:active { transform: scale(.86); }
+.fb-app tbody tr:not(.links-row) { transition: background var(--dur-micro) var(--ease); }
+.fb-app .row-flash > td { animation: fbFlash 1.1s var(--ease-soft) both; }
+
+/* ---- menus and expanding rows ---- */
+.fb-app .ms-menu:not([hidden]) { animation: fbPopIn var(--dur-reveal) var(--ease) both; transform-origin: top center; }
+.fb-app .ms-caret { transition: transform var(--dur-reveal) var(--ease); }
+.fb-app .ms-toggle.ms-open .ms-caret { transform: rotate(180deg); }
+.fb-app .links-row > td > div { animation: fbRise var(--dur-reveal) var(--ease) both; }
+
+/* ---- heatmap: cells arrive, calendar per cell, matrix per row ---- */
+.fb-app .hm-in { animation: fbCellIn var(--dur-reveal) var(--ease-pop) both; animation-delay: var(--d, 0ms); }
+
+/* ---- busy states: the button says it is working ---- */
+.fb-app button.is-busy { position: relative; color: transparent !important; pointer-events: none; }
+.fb-app button.is-busy::after {
+  content: ""; position: absolute; inset: 0; margin: auto;
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  color: var(--on-primary); animation: fbSpin 620ms linear infinite;
+}
+.fb-app .skeleton {
+  border-radius: 7px; background: var(--surface-1);
+  background-image: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.055) 50%, rgba(255,255,255,0) 100%);
+  background-repeat: no-repeat; background-size: 420px 100%;
+  animation: fbShimmer 1.25s linear infinite;
+}
+.fb-app .fb-working { animation: fbPulse 1.5s var(--ease-soft) infinite; }
+
+/* ---- toast: the result of an action, where the eye already is ---- */
+.fb-toast {
+  position: fixed; left: 50%; bottom: 26px; z-index: 1200;
+  transform: translateX(-50%) translateY(14px); opacity: 0;
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 16px; border-radius: 11px; font-size: 13px;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 0 0 1px rgba(95,224,160,0.10), 0 18px 40px -18px rgba(0,0,0,0.85);
+  transition: transform var(--dur-reveal) var(--ease-pop), opacity var(--dur-reveal) var(--ease);
+}
+.fb-toast.fb-toast-on { transform: translateX(-50%) translateY(0); opacity: 1; }
+.fb-toast .fb-toast-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fb-green); flex-shrink: 0; }
+.fb-toast.is-bad .fb-toast-dot { background: var(--text-danger); }
+
+/* Reduced motion is a hard stop, not a slowdown: no transitions, no
+   keyframes, and nothing that starts without being asked. */
+@media (prefers-reduced-motion: reduce) {
+  .fb-app *, .fb-toast {
+    transition: none !important;
+    animation: none !important;
+  }
+  .fb-app button.is-busy { color: inherit !important; }
+  .fb-app button.is-busy::after { display: none; }
+}
 </style>
 
 <div class="fb-app" style="display:none;">
@@ -1432,6 +1545,7 @@ function renderDateHeatmap(byDate, weeks, statusF) {
   }
   html += '</div>';
   host.innerHTML = html;
+  staggerIn(host.querySelectorAll('.hm-cell'), 2.2, 420);
 
   renderDateLegend(true);
 
@@ -1543,6 +1657,11 @@ function renderDateMatrix(weeks, statusF) {
 
   html += '</div>';
   host.innerHTML = html;
+  // Per ROW here, not per cell: a matrix can hold thousands of squares, and a
+  // per-cell wave across 182 columns would crawl.
+  var perRow = dates.length;
+  staggerIn(host.querySelectorAll('.hm-cell'), function (i) { return Math.floor(i / perRow) * 45; }, 420);
+  staggerIn(host.querySelectorAll('.mx-name'), 45, 420);
   renderDateLegend(false);
 
   // Clicking a cell narrows the log table to that one bot on that one date.
@@ -1684,6 +1803,123 @@ function setDatesView(v) {
   if (bList) bList.addEventListener('click', function () { setDatesView('list'); });
 })();
 
+/* =====================================================================
+   Motion module. Everything here is additive: if it throws or never runs,
+   the app behaves exactly as before, only without the movement.
+   ===================================================================== */
+var MOTION_OFF = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+function replayAnim(el, cls) {
+  if (MOTION_OFF || !el) return;
+  el.classList.remove(cls);
+  void el.offsetWidth;          // force reflow so the animation restarts
+  el.classList.add(cls);
+}
+
+// The single orchestrated entrance, once per sign-in.
+var _booted = false;
+function runBootSequence(app) {
+  if (_booted || MOTION_OFF || !app) return;
+  _booted = true;
+  var page = app.querySelector('#page-dashboard');
+  var cards = page ? page.querySelectorAll('.fb-card') : [];
+  Array.prototype.forEach.call(cards, function (c, i) { c.style.setProperty('--i', i); });
+  app.classList.add('fb-boot');
+  setTimeout(function () {
+    app.classList.remove('fb-boot');
+    Array.prototype.forEach.call(cards, function (c) { c.style.removeProperty('--i'); });
+  }, 1600);
+}
+
+// Sliding tab indicator. Added only once it has a real position, so the
+// original pill styling stays if this never runs.
+var _tabInd = null;
+function placeTabIndicator() {
+  var tabs = document.querySelector('.fb-tabs');
+  if (!tabs) return;
+  var active = tabs.querySelector('.fb-tab-active');
+  if (!active || active.offsetParent === null) return;
+  if (!_tabInd) {
+    _tabInd = document.createElement('div');
+    _tabInd.className = 'fb-tab-ind';
+    tabs.insertBefore(_tabInd, tabs.firstChild);
+  }
+  _tabInd.style.setProperty('--x', active.offsetLeft + 'px');
+  _tabInd.style.setProperty('--w', active.offsetWidth + 'px');
+  tabs.classList.add('has-ind');
+}
+
+// A transient confirmation where the eye already is.
+var _toastEl = null, _toastT = null;
+function toast(msg, bad) {
+  if (!_toastEl) {
+    _toastEl = document.createElement('div');
+    _toastEl.className = 'fb-toast';
+    _toastEl.innerHTML = '<span class="fb-toast-dot"></span><span class="fb-toast-msg"></span>';
+    document.body.appendChild(_toastEl);
+  }
+  _toastEl.querySelector('.fb-toast-msg').textContent = msg;
+  _toastEl.classList.toggle('is-bad', !!bad);
+  _toastEl.offsetWidth;
+  _toastEl.classList.add('fb-toast-on');
+  clearTimeout(_toastT);
+  _toastT = setTimeout(function () { _toastEl.classList.remove('fb-toast-on'); }, bad ? 4200 : 2400);
+}
+
+// Mark the row an action just created or changed, so the change is visible
+// without the user hunting for it.
+function flashRow(id) {
+  if (MOTION_OFF || !id) return;
+  setTimeout(function () {
+    var tr = document.querySelector('#table-body tr[data-row="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+    if (tr) {
+      replayAnim(tr, 'row-flash');
+      tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, 60);
+}
+
+// A report-shaped placeholder. Waiting should show the shape of what is
+// coming, not a sentence that sits there for thirty seconds.
+function reportSkeleton(label) {
+  var bar = function (w, h, mt) {
+    return '<div class="skeleton" style="width:' + w + '; height:' + (h || 11) + 'px; margin-top:' + (mt || 9) + 'px;"></div>';
+  };
+  return '<div style="padding:4px 0 10px;">' +
+    '<div class="fb-working" style="font-size:13px; color:var(--text-secondary); margin-bottom:14px;">' +
+      esc(label || 'Analysing observations\u2026') + '</div>' +
+    bar('38%', 15, 0) + bar('100%') + bar('94%') + bar('71%') +
+    bar('29%', 15, 22) + bar('100%') + bar('88%') + bar('55%') +
+    '</div>';
+}
+
+function setBusy(btn, on) {
+  if (!btn) return;
+  btn.classList.toggle('is-busy', !!on);
+  btn.disabled = !!on;
+}
+
+// Stagger cells in. Capped so a long window never turns into a slow wave.
+// `step` may be a number (per node) or a function (index -> ms), which the
+// matrix uses to delay per ROW instead of per cell.
+// The class is removed once it has played: an entrance animation with
+// fill-mode "both" would otherwise pin transform and kill the press feedback.
+function staggerIn(nodes, step, cap) {
+  if (MOTION_OFF || !nodes || !nodes.length) return;
+  var max = cap || 420;
+  var at = (typeof step === 'function') ? step : function (i) { return i * step; };
+  Array.prototype.forEach.call(nodes, function (n, i) {
+    n.style.setProperty('--d', Math.min(at(i), max) + 'ms');
+    n.classList.add('hm-in');
+  });
+  setTimeout(function () {
+    Array.prototype.forEach.call(nodes, function (n) {
+      n.classList.remove('hm-in');
+      n.style.removeProperty('--d');
+    });
+  }, max + 400);
+}
+
 // ---------- Audit log ----------
 var _auditRows = [];
 var _reportRows = [];
@@ -1769,7 +2005,7 @@ function render() {
   }
   empty.style.display = 'none';
   body.innerHTML = rows.map(e => `
-    <tr style="border-bottom:0.5px solid var(--border);">
+    <tr data-row="${escAttr(e.id)}" style="border-bottom:0.5px solid var(--border);">
       <td style="padding:6px 8px; vertical-align:top;">${e.date}${lateBadge(e) ? '<div style="margin-top:3px;">' + lateBadge(e) + '</div>' : ''}</td>
       <td style="padding:6px 8px; vertical-align:top;">${e.robot}</td>
       <td style="padding:6px 8px; vertical-align:top; word-break:break-word;">${taskList(e).join(', ') || '—'}</td>
@@ -1902,7 +2138,10 @@ function wireRowActions(container) {
         return;
       }
       entries = entries.filter(e => e.id !== delId);
-      if (delEntry) logAudit('deleted', delEntry.robot, delEntry.date);
+      if (delEntry) {
+        logAudit('deleted', delEntry.robot, delEntry.date);
+        toast('Deleted \u00b7 ' + delEntry.robot + ' \u00b7 ' + delEntry.date);
+      }
       renderRobotFilter();
       renderProgBotOptions();
       render();
@@ -2098,7 +2337,14 @@ function showPage(name) {
     var tab = document.getElementById('tab-' + t);
     if (tab) tab.classList.toggle('fb-tab-active', t === activeTab);
   });
+
+  var shown = document.getElementById('page-' + name);
+  if (shown && typeof replayAnim === 'function') replayAnim(shown, 'fb-page-in');
+  if (typeof placeTabIndicator === 'function') placeTabIndicator();
 }
+window.addEventListener('resize', function () {
+  if (typeof placeTabIndicator === 'function') placeTabIndicator();
+});
 document.getElementById('tab-dashboard').addEventListener('click', () => showPage('dashboard'));
 document.getElementById('tab-logs').addEventListener('click', () => showPage('observations'));
 document.getElementById('tab-reporting').addEventListener('click', () => showPage('reporting'));
@@ -2302,9 +2548,10 @@ document.getElementById('btn-save').addEventListener('click', async () => {
 
   const btn = document.getElementById('btn-save');
   if (btn.disabled) return;          // a second click while the first is in flight
-  btn.disabled = true;
+  setBusy(btn, true);
 
   const wasEditing = !!editingId;
+  let savedId = editingId;
   status.style.color = 'var(--text-secondary)';
   status.textContent = wasEditing ? 'Updating…' : 'Saving…';
   try {
@@ -2317,15 +2564,17 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     } else {
       const created = await dbAdd({ date, robot, task, issue, severity, notes, links, noData, lateUpload, loggedBy: currentUserName });
       entries.push(created);
+      savedId = created && created.id;
       logAudit('created', robot, date);
     }
   } catch (e) {
     status.style.color = 'var(--text-danger)';
     status.textContent = 'Save failed: ' + (e && e.message ? e.message : 'unknown error');
-    btn.disabled = false;
+    setBusy(btn, false);
+    toast('Could not save — ' + (e && e.message ? e.message : 'unknown error'), true);
     return;
   }
-  btn.disabled = false;
+  setBusy(btn, false);
 
   renderRobotFilter();
   renderProgBotOptions();
@@ -2336,6 +2585,8 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   status.style.color = 'var(--text-secondary)';
   status.textContent = wasEditing ? 'Updated.' : 'Saved.';
   setTimeout(() => status.textContent = '', 2000);
+  toast(wasEditing ? 'Observation updated' : 'Observation saved \u00b7 ' + robot + ' \u00b7 ' + date);
+  flashRow(savedId);
 });
 
 // Keep the "already logged" strip in step with the date / robot pickers.
@@ -2517,7 +2768,7 @@ async function generateReport() {
 
   const out = document.getElementById('rep-output');
   const copyBtn = document.getElementById('btn-copy-report');
-  out.innerHTML = '<div style="font-size:13px; color:var(--text-secondary); padding:10px 0;">Generating report with AI…</div>';
+  out.innerHTML = reportSkeleton('Analysing observations and writing the weekly report\u2026');
   copyBtn.style.display = 'none';
 
   const payload = buildReportPayload({ start, end, inRange, byBot, stats, ranked });
@@ -3798,7 +4049,7 @@ async function generateProgression() {
     return;
   }
 
-  out.innerHTML = '<div style="font-size:13px; color:var(--text-secondary); padding:10px 0;">Generating progression with AI…</div>';
+  out.innerHTML = reportSkeleton('Analysing this bot\u2019s progression\u2026');
   copyBtn.style.display = 'none'; hideExtras();
 
   try {
@@ -3944,7 +4195,10 @@ function copyToClipboard(text, btn) {
   });
 }
 
-document.getElementById('btn-report').addEventListener('click', generateReport);
+document.getElementById('btn-report').addEventListener('click', async function () {
+  setBusy(this, true);
+  try { await generateReport(); } finally { setBusy(this, false); }
+});
 (function(){ var cbtn = document.getElementById('btn-close-report'); if (cbtn) cbtn.addEventListener('click', function(){
   var o = document.getElementById('rep-output'); if (o) o.innerHTML = '';
   cbtn.style.display = 'none';
@@ -3959,7 +4213,10 @@ document.getElementById('btn-report').addEventListener('click', generateReport);
 document.getElementById('btn-copy-report').addEventListener('click', (ev) => {
   copyToClipboard(lastReportText || buildWeeklyText(), ev.currentTarget);
 });
-document.getElementById('btn-prog').addEventListener('click', generateProgression);
+document.getElementById('btn-prog').addEventListener('click', async function () {
+  setBusy(this, true);
+  try { await generateProgression(); } finally { setBusy(this, false); }
+});
 (function(){ var pb = document.getElementById('btn-print-prog'); if (pb) pb.addEventListener('click', function(){
   var bot = document.getElementById('prog-bot').value;
   var f = document.getElementById('prog-start').value || '';
@@ -4107,7 +4364,10 @@ function runIntro() {
   var playIntro = false, appReady = false, entering = false;
 
   var setMsg = function(t, danger){ msg.textContent = t || ''; msg.style.color = danger ? '#ff6b6b' : 'rgba(255,255,255,0.75)'; };
-  var showApp = function(){ app.style.display = ''; overlay.style.display = 'none'; };
+  var showApp = function(){
+    app.style.display = ''; overlay.style.display = 'none';
+    if (typeof runBootSequence === 'function') runBootSequence(app);
+  };
   var showLogin = function(){ app.style.display = 'none'; overlay.style.display = 'flex'; loginView.style.display = ''; changeView.style.display = 'none'; };
   var showChange = function(){ app.style.display = 'none'; overlay.style.display = 'flex'; loginView.style.display = 'none'; changeView.style.display = ''; };
   var toEmail = function(u){ return u.indexOf('@') !== -1 ? u : (u + '@' + LOGIN_EMAIL_DOMAIN); };
