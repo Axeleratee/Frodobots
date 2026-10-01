@@ -3451,6 +3451,49 @@ async function deleteUser(id) {
 }
 
 // Package only what the model needs: a clean summary + the raw observations.
+// Counted here, not by the model: LLMs are unreliable at tallying rows, and
+// coverage is exactly the number a QA lead escalates. "No data" is excluded
+// from quality analysis (there is nothing to judge) but must still be REPORTED.
+function coverageSummary(rows, start, end, bots) {
+  var per = {};
+  function slot(b) {
+    return per[b] || (per[b] = { robot: b, evaluated: 0, noData: 0, lateUploads: 0, datesLogged: 0, _d: {} });
+  }
+  (bots || []).forEach(slot);
+  rows.forEach(function (e) {
+    if (!e.robot) return;
+    var c = slot(e.robot);
+    if (isEvaluated(e)) c.evaluated++; else c.noData++;
+    if (isLateUpload(e)) c.lateUploads++;
+    if (e.date) c._d[e.date] = 1;
+  });
+
+  // Dates in the period with no entry at all for that bot - only meaningful
+  // when the period has real bounds.
+  var span = null;
+  if (start && end && start <= end) {
+    span = 0;
+    for (var dt = new Date(start + 'T00:00:00'), ed = new Date(end + 'T00:00:00'); dt <= ed; dt.setDate(dt.getDate() + 1)) span++;
+  }
+
+  var list = Object.keys(per).map(function (b) {
+    var c = per[b];
+    c.datesLogged = Object.keys(c._d).length;
+    delete c._d;
+    c.datesWithNoEntryAtAll = (span === null) ? null : Math.max(0, span - c.datesLogged);
+    return c;
+  }).sort(function (a, b) { return a.robot.localeCompare(b.robot); });
+
+  return {
+    periodLengthInDays: span,
+    totalEntries: rows.length,
+    evaluatedEntries: rows.filter(isEvaluated).length,
+    noDataEntries: rows.filter(function (e) { return !isEvaluated(e); }).length,
+    lateUploadEntries: rows.filter(isLateUpload).length,
+    perRobot: list
+  };
+}
+
 function buildReportPayload({ start, end, inRange, byBot, stats, ranked }) {
   const observations = inRange.slice()
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -3486,6 +3529,8 @@ function buildReportPayload({ start, end, inRange, byBot, stats, ranked }) {
       topIssues: r.reasonsRaw.map(([k, v]) => ({ issue: ISSUE_LABELS[k] || k, count: v }))
     }))
   };
+
+  summary.coverage = coverageSummary(inRange, start, end, allRobots());
 
   return { summary, observations };
 }
@@ -3705,8 +3750,10 @@ function buildProgressionPayload(bot, start, end, rows) {
       evaluatedSessions: evaluated.length,
       notEvaluatedEntries: rows.length - evaluated.length,
       errorSessions: errors.length,
+      lateUploadEntries: rows.filter(isLateUpload).length,
       issueCounts: issueCounts,
-      computedTrendHint: classifyTrend(dailyErrorRates(rows))
+      computedTrendHint: classifyTrend(dailyErrorRates(rows)),
+      coverage: coverageSummary(rows, start, end, [bot])
     },
     observations: observations
   };

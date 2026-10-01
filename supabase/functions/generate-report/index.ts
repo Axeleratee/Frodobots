@@ -40,6 +40,15 @@ the issue types instead (repeated "major" issue types lean High/Critical; isolat
 minor ones lean Low/Moderate). State the rating word (e.g. "Severity: High"); you
 may cite the average once as brief support, but never list every individual number.
 
+DATA COVERAGE vs QUALITY - keep these two apart:
+An entry marked "no data" means the bot was NOT evaluated that day, so there is
+nothing to judge about its behaviour. Exclude those entries from every quality
+judgement (severity, trend, issue counts, the worst-bot ranking) - but they are
+NOT invisible. They are a coverage finding, and coverage is reported in its own
+section below. The same goes for entries with "lateUpload": true - the footage
+arrived after the expected date, which is a process problem, not a behaviour one.
+Use the pre-counted numbers in summary.coverage; do not recount the rows yourself.
+
 TREND (you compute this): for each bot, compare its observations across their dates
 and decide Improving, Declining, Unstable, or Steady. Ignore any
 "computedTrendHint" value - derive the trend from the evidence. If there are too
@@ -67,9 +76,23 @@ For every OTHER bot, ONE sentence each: overall performance, its severity rating
 (or "no issues observed"), and its trend. If a bot only has "no data" entries, note
 it was not evaluated this period.
 
+## Data coverage
+Report what could NOT be evaluated this period, using summary.coverage:
+- One opening line with the overall split: how many entries were evaluated, how
+  many were "no data", and how many arrived as late uploads.
+- Then one bullet for each bot that has any noData, lateUploads, or
+  datesWithNoEntryAtAll above zero, in the form:
+  "**<robot>** - <n> no data, <n> late upload(s), <n> date(s) with no entry at all".
+  Skip bots where all three are zero. If every bot is clean, say so in one line.
+- Close with one sentence on what the gaps mean for confidence in this report -
+  for example, that a bot with few evaluated sessions cannot be ranked reliably.
+Treat missing data as a teleoperation/upload issue, never as a fault of the
+reviewer who logged it.
+
 ## Recommendations
 3-5 short bullet points: concrete, prioritised focus areas for the annotation and
-teleoperation teams, grounded in the analysis above.
+teleoperation teams, grounded in the analysis above. If coverage gaps are the
+biggest problem this period, say so and make that the first bullet.
 
 Rules:
 - Base every statement strictly on the data. Never invent robots, dates, issues,
@@ -102,8 +125,13 @@ TREND: you infer it yourself by comparing earlier dates against later dates -
 Improving, Declining, Unstable, or Steady. Justify it in a few words. If only one
 evaluated session exists, say a trend cannot be established yet.
 
-Entries marked "no data" mean the bot was NOT evaluated that day. Exclude them
-from the quality analysis, but mention them if they leave gaps in coverage.
+Entries marked "no data" mean the bot was NOT evaluated that day, so there is
+nothing to judge about its behaviour. Exclude them from every quality judgement
+(severity, trend, recurring issues) - but they are NOT invisible: report them in
+the Data coverage section below. Entries with "lateUpload": true mean the footage
+arrived after the expected date; that is a process problem, not a behaviour one,
+and belongs in the same section. Use the pre-counted numbers in summary.coverage
+rather than recounting rows yourself.
 
 STRUCTURE (use these exact headings):
 
@@ -116,6 +144,9 @@ the single most important takeaway. State **Severity: <rating>** and
 One SHORT line per date, in chronological order, in the form:
 - **<date>** - what was observed and whether it improved or worsened versus the
   previous date.
+For a date whose entries are all "no data", still give it a line, written as
+"- **<date>** - not evaluated (no data)." so the gap is visible in the timeline
+instead of silently disappearing. Mark a late upload on its line too.
 Keep each line to one sentence. Do not repeat the same wording every line.
 
 ## Recurring issues
@@ -123,8 +154,17 @@ A few bullets naming the issues that appear more than once, with how many times
 each occurred and what they suggest about the underlying cause. If nothing
 recurs, say so in one line.
 
+## Data coverage
+Two or three sentences using summary.coverage: how many entries were evaluated,
+how many were "no data", how many arrived late, and how many dates in the period
+have no entry at all for this bot. Say plainly what that does to confidence in
+the trend above - a trend drawn from two evaluated sessions is weak, and you
+should say so. Treat missing data as a teleoperation/upload issue, never as a
+fault of the reviewer who logged it. If coverage is complete, say so in one line.
+
 ## Conclusion and recommendations
-2-4 bullets with concrete, actionable next steps for this specific bot.
+2-4 bullets with concrete, actionable next steps for this specific bot. If the
+main problem is missing or late data rather than behaviour, say that first.
 
 RULES:
 - Never invent data. If something is not in the input, do not mention it.
