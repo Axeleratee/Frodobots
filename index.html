@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<meta charset="utf-8">
 <title>Behavior Analytics</title>
 <link rel="icon" type="image/png" href="data:image/png;base64,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">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -318,6 +319,40 @@ html, body {
 .fb-app .a4-scroll { overflow-x: auto; padding: 4px 0 2px; }
 @media (max-width: 900px) {
   .fb-app .a4-sheet { min-height: 0; padding: 30px 24px 36px; border-radius: 3px; }
+}
+
+/* ===== date heatmap ===== */
+.fb-app .dv-tab { color: var(--text-secondary); border-radius: 6px; cursor: pointer; font-family: inherit; }
+.fb-app .dv-tab:hover { background: rgba(255,255,255,0.05); border: none; }
+.fb-app .dv-tab-on, .fb-app .dv-tab-on:hover { background: var(--surface-1); color: var(--text-primary); font-weight: 600; }
+.fb-app .hm-cell {
+  width: 13px; height: 13px; border-radius: 3px; padding: 0; border: none;
+  position: relative; cursor: pointer; display: block;
+  transition: outline-color .12s ease, opacity .12s ease;
+  outline: 1.5px solid transparent; outline-offset: 1px;
+}
+.fb-app .hm-cell:hover, .fb-app .hm-cell:focus-visible { outline-color: var(--text-primary); }
+.fb-app .hm-cell.hm-dim { opacity: 0.18; }
+.fb-app .hm-swatch { width: 13px; height: 13px; border-radius: 3px; display: inline-block; flex-shrink: 0; position: relative; }
+
+/* No log at all: empty, so absence reads as absence. */
+.fb-app .hm-none { background: var(--surface-0); box-shadow: inset 0 0 0 1px var(--border); }
+/* Reviewed: one hue, dark -> light as the day's volume grows. */
+.fb-app .hm-rev-1 { background: #2f6a4e; }
+.fb-app .hm-rev-2 { background: #54a977; }
+.fb-app .hm-rev-3 { background: #8df0b8; }
+/* Late upload: amber + a corner notch. */
+.fb-app .hm-late { background: #d9a93f; }
+.fb-app .hm-late::after {
+  content: ""; position: absolute; top: 0; right: 0;
+  border-top: 6px solid rgba(0,0,0,0.62); border-left: 6px solid transparent;
+  border-top-right-radius: 3px;
+}
+/* No data: red + 45° hatch, so it reads as struck through even without colour. */
+.fb-app .hm-gap {
+  background-color: #b83b36;
+  background-image: repeating-linear-gradient(45deg,
+    rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.5) 2px 4px);
 }
 
 /* ===== refined details ===== */
@@ -693,17 +728,27 @@ html, body {
         <option value="reviewed">Fully reviewed</option>
       </select>
       <select id="dates-range" style="width:auto; min-width:130px; font-size:12.5px; padding:5px 26px 5px 9px;">
-        <option value="14">Last 14 dates</option>
-        <option value="30" selected>Last 30 dates</option>
-        <option value="90">Last 90 dates</option>
-        <option value="0">All dates</option>
+        <option value="12">Last 12 weeks</option>
+        <option value="26" selected>Last 26 weeks</option>
+        <option value="52">Last 52 weeks</option>
       </select>
+      <div style="display:flex; gap:2px; background:var(--surface-0); border:1px solid var(--border); border-radius:8px; padding:3px;">
+        <button id="dates-view-map" class="dv-tab dv-tab-on" style="font-size:11.5px; padding:4px 10px; border:none; background:transparent;">Heatmap</button>
+        <button id="dates-view-list" class="dv-tab" style="font-size:11.5px; padding:4px 10px; border:none; background:transparent;">List</button>
+      </div>
     </div>
     <div id="dates-summary" style="font-size:12.5px; color:var(--text-secondary); margin-bottom:12px;"></div>
-    <div id="dates-list" style="display:flex; flex-direction:column; gap:6px; max-height:420px; overflow:auto;"></div>
-    <div style="font-size:11.5px; color:var(--text-muted); margin-top:11px;">
-      Reviewed = the date has real evaluations. No data = entries logged as not evaluated.
-      Late upload = at least one entry was tagged as arriving late. Click a date to open its logs.
+
+    <div id="dates-heatmap-wrap">
+      <div id="dates-heatmap" style="overflow-x:auto; padding-bottom:4px;"></div>
+      <div id="dates-legend" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:11.5px; color:var(--text-secondary);"></div>
+    </div>
+
+    <div id="dates-list" style="display:none; flex-direction:column; gap:6px; max-height:420px; overflow:auto;"></div>
+
+    <div id="dates-hint" style="font-size:11.5px; color:var(--text-muted); margin-top:11px;">
+      Each square is one date. Reviewed = the date has real evaluations. No data = entries logged as
+      not evaluated. Late upload = at least one entry was tagged as arriving late. Click a square to open its logs.
     </div>
   </div>
 
@@ -1268,25 +1313,162 @@ function dateOverviewRows() {
     });
 }
 
+// Calendar heatmap: one square per date, including dates with nothing logged -
+// those gaps are the whole point, and a list of logged dates can never show them.
+const HM_STATES = {
+  none:  { cls: 'hm-none',  label: 'Nothing logged' },
+  rev:   { cls: 'hm-rev-3', label: 'Reviewed' },
+  late:  { cls: 'hm-late',  label: 'Late upload' },
+  gap:   { cls: 'hm-gap',   label: 'No data' }
+};
+
+function hmISO(dt) {
+  var m = String(dt.getMonth() + 1).padStart(2, '0');
+  var day = String(dt.getDate()).padStart(2, '0');
+  return dt.getFullYear() + '-' + m + '-' + day;
+}
+
+function hmStateOf(d) {
+  if (!d) return 'none';
+  if (d.late > 0) return 'late';
+  if (d.reviewed === 0) return 'gap';
+  return 'rev';
+}
+
+function renderDateHeatmap(byDate, weeks, statusF) {
+  var host = document.getElementById('dates-heatmap');
+  var legend = document.getElementById('dates-legend');
+  if (!host) return;
+
+  // Grid ends on the Saturday of this week so the last column is never clipped.
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var end = new Date(today); end.setDate(end.getDate() + (6 - end.getDay()));
+  var start = new Date(end); start.setDate(start.getDate() - (weeks * 7 - 1));
+
+  // Volume thresholds for the three reviewed steps.
+  var counts = Object.keys(byDate).map(function (k) { return byDate[k].reviewed; })
+    .filter(function (n) { return n > 0; }).sort(function (a, b) { return a - b; });
+  var t1 = counts.length ? counts[Math.floor(counts.length / 3)] : 1;
+  var t2 = counts.length ? counts[Math.floor(counts.length * 2 / 3)] : 2;
+
+  function revClass(n) { return n > t2 ? 'hm-rev-3' : (n > t1 ? 'hm-rev-2' : 'hm-rev-1'); }
+
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var html = '<div style="display:flex; gap:4px; min-width:max-content;">';
+
+  // Weekday rail (Mon / Wed / Fri, like a contribution calendar).
+  html += '<div style="display:flex; flex-direction:column; gap:3px; padding-top:18px; margin-right:2px;">';
+  ['', 'Mon', '', 'Wed', '', 'Fri', ''].forEach(function (lbl) {
+    html += '<div style="height:13px; line-height:13px; font-size:9.5px; color:var(--text-muted); text-align:right; width:22px;">' + lbl + '</div>';
+  });
+  html += '</div>';
+
+  var cur = new Date(start);
+  cur.setDate(cur.getDate() - cur.getDay());   // align to Sunday
+  var lastMonth = -1;
+
+  while (cur <= end) {
+    var weekStartMonth = cur.getMonth();
+    var showMonth = (weekStartMonth !== lastMonth);
+    if (showMonth) lastMonth = weekStartMonth;
+
+    html += '<div style="display:flex; flex-direction:column; gap:3px;">';
+    html += '<div style="height:14px; font-size:9.5px; color:var(--text-muted); white-space:nowrap;">' +
+            (showMonth ? MONTHS[weekStartMonth] : '') + '</div>';
+
+    for (var i = 0; i < 7; i++) {
+      var iso = hmISO(cur);
+      var inRange = (cur >= start && cur <= today);
+      if (!inRange) {
+        html += '<div style="width:13px; height:13px;"></div>';
+      } else {
+        var d = byDate[iso];
+        var st = hmStateOf(d);
+        var cls = st === 'rev' ? revClass(d.reviewed) : HM_STATES[st].cls;
+
+        var matches = !statusF ||
+          (statusF === 'needs' && d && d.needsAction) ||
+          (statusF === 'late' && st === 'late') ||
+          (statusF === 'nodata' && d && d.noData > 0) ||
+          (statusF === 'reviewed' && d && d.reviewed > 0 && d.noData === 0 && d.late === 0);
+
+        var parts = [];
+        if (d) {
+          if (d.reviewed) parts.push(d.reviewed + ' reviewed');
+          if (d.noData) parts.push(d.noData + ' no data');
+          if (d.late) parts.push(d.late + ' late');
+          parts.push(d.botCount + ' bot' + (d.botCount === 1 ? '' : 's'));
+        } else { parts.push('nothing logged'); }
+
+        html += '<button type="button" class="hm-cell ' + cls + (matches ? '' : ' hm-dim') + '" ' +
+          'data-date="' + escAttr(iso) + '" ' +
+          'title="' + escAttr(iso + ' \u2014 ' + parts.join(' \u00b7 ')) + '" ' +
+          'aria-label="' + escAttr(iso + ': ' + HM_STATES[st].label + ', ' + parts.join(', ')) + '"></button>';
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  host.innerHTML = html;
+
+  // Legend: colour is never the only cue, so every state is named.
+  if (legend) {
+    legend.innerHTML =
+      '<span style="display:flex; align-items:center; gap:5px;"><span class="hm-swatch hm-none"></span>Nothing logged</span>' +
+      '<span style="display:flex; align-items:center; gap:5px;">' +
+        '<span class="hm-swatch hm-rev-1"></span><span class="hm-swatch hm-rev-2"></span><span class="hm-swatch hm-rev-3"></span>' +
+        'Reviewed <span style="color:var(--text-muted);">(fewer \u2192 more)</span></span>' +
+      '<span style="display:flex; align-items:center; gap:5px;"><span class="hm-swatch hm-late"></span>Late upload</span>' +
+      '<span style="display:flex; align-items:center; gap:5px;"><span class="hm-swatch hm-gap"></span>No data</span>';
+  }
+
+  Array.prototype.forEach.call(host.querySelectorAll('.hm-cell'), function (btn) {
+    btn.addEventListener('click', function () { focusLogsOnDate(btn.dataset.date); });
+  });
+}
+
+// Shared by the heatmap and the list: filter the log table down to one date.
+function focusLogsOnDate(dateISO) {
+  ['filter-robot','filter-task','filter-issue','filter-user','filter-search','filter-late'].forEach(function (id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  var f = document.getElementById('filter-from'); if (f) f.value = dateISO;
+  var t = document.getElementById('filter-to'); if (t) t.value = dateISO;
+  render();
+  if (typeof renderAuditFiltered === 'function') renderAuditFiltered();
+  var tbl = document.getElementById('table-body');
+  if (tbl) tbl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+var _datesView = 'map';
+
 function renderDateOverview() {
   var list = document.getElementById('dates-list');
   var summary = document.getElementById('dates-summary');
   if (!list || !summary) return;
 
   var statusF = (document.getElementById('dates-status') || {}).value || '';
-  var limit = parseInt((document.getElementById('dates-range') || {}).value || '30', 10);
+  var weeks = parseInt((document.getElementById('dates-range') || {}).value || '26', 10);
 
-  var rows = dateOverviewRows();
-  var all = rows.slice();
+  // One cutoff for both views, so the heatmap and the list always agree.
+  var cutDt = new Date(); cutDt.setHours(0, 0, 0, 0);
+  cutDt.setDate(cutDt.getDate() - (weeks * 7 - 1));
+  var cut = hmISO(cutDt);
 
-  rows = rows.filter(function (d) {
+  var all = dateOverviewRows().filter(function (d) { return d.date >= cut; });
+
+  var byDate = {};
+  all.forEach(function (d) { byDate[d.date] = d; });
+  renderDateHeatmap(byDate, weeks, statusF);
+
+  var rows = all.filter(function (d) {
     if (statusF === 'needs') return d.needsAction;
     if (statusF === 'late') return d.late > 0;
     if (statusF === 'nodata') return d.noData > 0;
     if (statusF === 'reviewed') return d.reviewed > 0 && d.noData === 0 && d.late === 0;
     return true;
   });
-  if (limit) rows = rows.slice(0, limit);
 
   var lateDates = all.filter(function (d) { return d.late > 0; }).length;
   var gapDates = all.filter(function (d) { return d.reviewed === 0; }).length;
@@ -1301,6 +1483,7 @@ function renderDateOverview() {
     list.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">No dates match this filter.</div>';
     return;
   }
+
 
   function chip(text, color, bg, border) {
     return '<span style="font-size:11px; padding:1px 8px; border-radius:20px; white-space:nowrap; color:' + color +
@@ -1326,19 +1509,29 @@ function renderDateOverview() {
   }).join('');
 
   Array.prototype.forEach.call(list.querySelectorAll('.date-row'), function (btn) {
-    btn.addEventListener('click', function () {
-      var d = btn.dataset.date;
-      ['filter-robot','filter-task','filter-issue','filter-user','filter-search','filter-late'].forEach(function (id) {
-        var el = document.getElementById(id); if (el) el.value = '';
-      });
-      var f = document.getElementById('filter-from'); if (f) f.value = d;
-      var t = document.getElementById('filter-to'); if (t) t.value = d;
-      render();
-      if (typeof renderAuditFiltered === 'function') renderAuditFiltered();
-      var tbl = document.getElementById('table-body');
-      if (tbl) tbl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+    btn.addEventListener('click', function () { focusLogsOnDate(btn.dataset.date); });
   });
+}
+
+// Heatmap / List toggle. The list is kept, not replaced - the heatmap is the
+// overview, the list is still the one that shows the per-date counts as text.
+function setDatesView(v) {
+  _datesView = v;
+  var map = document.getElementById('dates-heatmap-wrap');
+  var list = document.getElementById('dates-list');
+  var bMap = document.getElementById('dates-view-map');
+  var bList = document.getElementById('dates-view-list');
+  if (map) map.style.display = (v === 'map') ? '' : 'none';
+  if (list) list.style.display = (v === 'list') ? 'flex' : 'none';
+  if (bMap) { bMap.classList.toggle('dv-tab-on', v === 'map'); bMap.setAttribute('aria-pressed', v === 'map'); }
+  if (bList) { bList.classList.toggle('dv-tab-on', v === 'list'); bList.setAttribute('aria-pressed', v === 'list'); }
+  var hint = document.getElementById('dates-hint');
+  if (hint) {
+    hint.textContent = (v === 'map')
+      ? 'Each square is one date \u2014 blank squares are dates with nothing logged at all. Reviewed = the date has real evaluations; the brighter the square, the more were logged. Click a square to open its logs.'
+      : 'One row per date that has logs. Reviewed = the date has real evaluations. No data = entries logged as not evaluated. Late upload = at least one entry was tagged as arriving late. Click a row to open its logs.';
+  }
+  renderDateOverview();
 }
 
 (function () {
@@ -1346,6 +1539,10 @@ function renderDateOverview() {
     var el = document.getElementById(id);
     if (el) el.addEventListener('change', renderDateOverview);
   });
+  var bMap = document.getElementById('dates-view-map');
+  if (bMap) bMap.addEventListener('click', function () { setDatesView('map'); });
+  var bList = document.getElementById('dates-view-list');
+  if (bList) bList.addEventListener('click', function () { setDatesView('list'); });
 })();
 
 // ---------- Audit log ----------
