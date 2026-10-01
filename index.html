@@ -334,6 +334,17 @@ html, body {
 .fb-app .hm-cell:hover, .fb-app .hm-cell:focus-visible { outline-color: var(--text-primary); }
 .fb-app .hm-cell.hm-dim { opacity: 0.18; }
 .fb-app .hm-swatch { width: 13px; height: 13px; border-radius: 3px; display: inline-block; flex-shrink: 0; position: relative; }
+.fb-app .hm-cell-lg { width: 15px; height: 15px; }
+/* Bot names stay put while the dates scroll sideways. */
+.fb-app .mx-name {
+  position: sticky; left: 0; z-index: 2;
+  background: var(--surface-0);
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; padding-right: 10px; white-space: nowrap;
+  overflow: hidden;   /* never let a long count spill over the first columns */
+}
+.fb-app .mx-head { position: sticky; top: 0; z-index: 3; background: var(--surface-0); }
+.fb-app .mx-corner { z-index: 4; }
 
 /* No log at all: empty, so absence reads as absence. */
 .fb-app .hm-none { background: var(--surface-0); box-shadow: inset 0 0 0 1px var(--border); }
@@ -733,7 +744,8 @@ html, body {
         <option value="52">Last 52 weeks</option>
       </select>
       <div style="display:flex; gap:2px; background:var(--surface-0); border:1px solid var(--border); border-radius:8px; padding:3px;">
-        <button id="dates-view-map" class="dv-tab dv-tab-on" style="font-size:11.5px; padding:4px 10px; border:none; background:transparent;">Heatmap</button>
+        <button id="dates-view-map" class="dv-tab dv-tab-on" style="font-size:11.5px; padding:4px 10px; border:none; background:transparent;">Calendar</button>
+        <button id="dates-view-bot" class="dv-tab" style="font-size:11.5px; padding:4px 10px; border:none; background:transparent;">By bot</button>
         <button id="dates-view-list" class="dv-tab" style="font-size:11.5px; padding:4px 10px; border:none; background:transparent;">List</button>
       </div>
     </div>
@@ -741,8 +753,13 @@ html, body {
 
     <div id="dates-heatmap-wrap">
       <div id="dates-heatmap" style="overflow-x:auto; padding-bottom:4px;"></div>
-      <div id="dates-legend" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:11.5px; color:var(--text-secondary);"></div>
     </div>
+
+    <div id="dates-matrix-wrap" style="display:none;">
+      <div id="dates-matrix" style="overflow:auto; max-height:460px; padding-bottom:4px;"></div>
+    </div>
+
+    <div id="dates-legend" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:11.5px; color:var(--text-secondary);"></div>
 
     <div id="dates-list" style="display:none; flex-direction:column; gap:6px; max-height:420px; overflow:auto;"></div>
 
@@ -1412,27 +1429,135 @@ function renderDateHeatmap(byDate, weeks, statusF) {
   html += '</div>';
   host.innerHTML = html;
 
-  // Legend: colour is never the only cue, so every state is named.
-  if (legend) {
-    legend.innerHTML =
-      '<span style="display:flex; align-items:center; gap:5px;"><span class="hm-swatch hm-none"></span>Nothing logged</span>' +
-      '<span style="display:flex; align-items:center; gap:5px;">' +
-        '<span class="hm-swatch hm-rev-1"></span><span class="hm-swatch hm-rev-2"></span><span class="hm-swatch hm-rev-3"></span>' +
-        'Reviewed <span style="color:var(--text-muted);">(fewer \u2192 more)</span></span>' +
-      '<span style="display:flex; align-items:center; gap:5px;"><span class="hm-swatch hm-late"></span>Late upload</span>' +
-      '<span style="display:flex; align-items:center; gap:5px;"><span class="hm-swatch hm-gap"></span>No data</span>';
-  }
+  renderDateLegend(true);
 
   Array.prototype.forEach.call(host.querySelectorAll('.hm-cell'), function (btn) {
     btn.addEventListener('click', function () { focusLogsOnDate(btn.dataset.date); });
   });
 }
 
+// Legend: colour is never the only cue, so every state is named.
+// withRamp = the calendar view, where reviewed green also encodes volume.
+function renderDateLegend(withRamp) {
+  var legend = document.getElementById('dates-legend');
+  if (!legend) return;
+  var reviewed = withRamp
+    ? '<span class="hm-swatch hm-rev-1"></span><span class="hm-swatch hm-rev-2"></span><span class="hm-swatch hm-rev-3"></span>' +
+      'Reviewed <span style="color:var(--text-muted);">(fewer \u2192 more)</span>'
+    : '<span class="hm-swatch hm-rev-3"></span>Reviewed';
+  legend.innerHTML =
+      '<span style="display:flex; align-items:center; gap:5px;"><span class="hm-swatch hm-none"></span>Nothing logged</span>' +
+      '<span style="display:flex; align-items:center; gap:5px;">' + reviewed + '</span>' +
+      '<span style="display:flex; align-items:center; gap:5px;"><span class="hm-swatch hm-late"></span>Late upload</span>' +
+      '<span style="display:flex; align-items:center; gap:5px;"><span class="hm-swatch hm-gap"></span>No data</span>';
+}
+
+// Bot x date matrix. The calendar answers "which dates need attention";
+// this answers "which BOT is missing on which date" - a blank cell here is a
+// bot that was never logged that day, which no list of logged rows can show.
+function renderDateMatrix(weeks, statusF) {
+  var host = document.getElementById('dates-matrix');
+  if (!host) return;
+
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var start = new Date(today); start.setDate(start.getDate() - (weeks * 7 - 1));
+  var startISO = hmISO(start);
+
+  // Dates oldest -> newest, so it reads like the calendar above.
+  var dates = [];
+  for (var dt = new Date(start); dt <= today; dt.setDate(dt.getDate() + 1)) dates.push(hmISO(dt));
+
+  // Aggregate per bot, per date.
+  var cells = {};
+  entries.forEach(function (e) {
+    if (!e.robot || !e.date || e.date < startISO) return;
+    var k = e.robot + '|' + e.date;
+    var c = cells[k] || (cells[k] = { n: 0, late: 0, gap: 0 });
+    c.n++;
+    if (isLateUpload(e)) c.late++;
+    if (!isEvaluated(e)) c.gap++;
+  });
+
+  var bots = allRobots();
+  if (!bots.length) {
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">No bots to show yet.</div>';
+    return;
+  }
+
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var cols = '196px repeat(' + dates.length + ', 15px)';
+  var html = '<div style="display:grid; grid-template-columns:' + cols + '; gap:3px; min-width:max-content; align-items:center;">';
+
+  // Header row: a month label wherever the month turns over.
+  html += '<div class="mx-name mx-head mx-corner" style="height:16px;"></div>';
+  var lastMonth = -1;
+  dates.forEach(function (iso) {
+    var m = parseInt(iso.slice(5, 7), 10) - 1;
+    var show = (m !== lastMonth); if (show) lastMonth = m;
+    html += '<div class="mx-head" style="height:16px; position:relative; font-size:9.5px; color:var(--text-muted);">' +
+      (show ? '<span style="position:absolute; left:0; bottom:1px; white-space:nowrap;">' + MONTHS[m] + '</span>' : '') +
+      '</div>';
+  });
+
+  bots.forEach(function (bot) {
+    var missing = 0, gaps = 0, lates = 0;
+    var row = '';
+    dates.forEach(function (iso) {
+      var c = cells[bot + '|' + iso];
+      var st = !c ? 'none' : (c.late > 0 ? 'late' : (c.gap >= c.n ? 'gap' : 'rev'));
+      if (st === 'none') missing++;
+      else if (st === 'gap') gaps++;
+      else if (st === 'late') lates++;
+
+      var matches = !statusF ||
+        (statusF === 'needs' && (st === 'gap' || st === 'late')) ||
+        (statusF === 'late' && st === 'late') ||
+        (statusF === 'nodata' && st === 'gap') ||
+        (statusF === 'reviewed' && st === 'rev');
+
+      var desc = !c ? 'nothing logged'
+        : (c.n + ' entr' + (c.n === 1 ? 'y' : 'ies') +
+           (c.gap ? ', ' + c.gap + ' no data' : '') +
+           (c.late ? ', ' + c.late + ' late' : ''));
+
+      row += '<button type="button" class="hm-cell hm-cell-lg ' + HM_STATES[st].cls + (matches ? '' : ' hm-dim') + '" ' +
+        'data-date="' + escAttr(iso) + '" data-bot="' + escAttr(bot) + '" ' +
+        'title="' + escAttr(bot + ' \u00b7 ' + iso + ' \u2014 ' + desc) + '" ' +
+        'aria-label="' + escAttr(bot + ', ' + iso + ': ' + HM_STATES[st].label + ', ' + desc) + '"></button>';
+    });
+
+    // The count that matters per bot is how many days it was never logged at all.
+    var note = missing
+      ? '<span style="color:var(--text-muted);">' + missing + ' blank</span>'
+      : '<span style="color:var(--fb-green);">full</span>';
+    if (gaps) note += ' <span style="color:#d9a93f;">\u00b7 ' + gaps + ' no data</span>';
+
+    html += '<div class="mx-name" style="height:15px;">' +
+      '<span style="font-weight:600; color:var(--text-primary);">' + esc(bot) + '</span>' +
+      '<span style="flex:1;"></span>' + note + '</div>' + row;
+  });
+
+  html += '</div>';
+  host.innerHTML = html;
+  renderDateLegend(false);
+
+  // Clicking a cell narrows the log table to that one bot on that one date.
+  Array.prototype.forEach.call(host.querySelectorAll('.hm-cell'), function (btn) {
+    btn.addEventListener('click', function () {
+      focusLogsOnDate(btn.dataset.date, btn.dataset.bot);
+    });
+  });
+
+  // Open at the most recent dates rather than six months ago.
+  host.scrollLeft = host.scrollWidth;
+}
+
 // Shared by the heatmap and the list: filter the log table down to one date.
-function focusLogsOnDate(dateISO) {
+function focusLogsOnDate(dateISO, bot) {
   ['filter-robot','filter-task','filter-issue','filter-user','filter-search','filter-late'].forEach(function (id) {
     var el = document.getElementById(id); if (el) el.value = '';
   });
+  if (bot) { var rf = document.getElementById('filter-robot'); if (rf) rf.value = bot; }
   var f = document.getElementById('filter-from'); if (f) f.value = dateISO;
   var t = document.getElementById('filter-to'); if (t) t.value = dateISO;
   render();
@@ -1458,9 +1583,13 @@ function renderDateOverview() {
 
   var all = dateOverviewRows().filter(function (d) { return d.date >= cut; });
 
-  var byDate = {};
-  all.forEach(function (d) { byDate[d.date] = d; });
-  renderDateHeatmap(byDate, weeks, statusF);
+  if (_datesView === 'bot') {
+    renderDateMatrix(weeks, statusF);
+  } else {
+    var byDate = {};
+    all.forEach(function (d) { byDate[d.date] = d; });
+    renderDateHeatmap(byDate, weeks, statusF);
+  }
 
   var rows = all.filter(function (d) {
     if (statusF === 'needs') return d.needsAction;
@@ -1517,20 +1646,24 @@ function renderDateOverview() {
 // overview, the list is still the one that shows the per-date counts as text.
 function setDatesView(v) {
   _datesView = v;
-  var map = document.getElementById('dates-heatmap-wrap');
-  var list = document.getElementById('dates-list');
-  var bMap = document.getElementById('dates-view-map');
-  var bList = document.getElementById('dates-view-list');
-  if (map) map.style.display = (v === 'map') ? '' : 'none';
-  if (list) list.style.display = (v === 'list') ? 'flex' : 'none';
-  if (bMap) { bMap.classList.toggle('dv-tab-on', v === 'map'); bMap.setAttribute('aria-pressed', v === 'map'); }
-  if (bList) { bList.classList.toggle('dv-tab-on', v === 'list'); bList.setAttribute('aria-pressed', v === 'list'); }
+  var views = { map: 'dates-heatmap-wrap', bot: 'dates-matrix-wrap', list: 'dates-list' };
+  Object.keys(views).forEach(function (k) {
+    var el = document.getElementById(views[k]);
+    if (el) el.style.display = (k === v) ? (k === 'list' ? 'flex' : '') : 'none';
+  });
+  var legend = document.getElementById('dates-legend');
+  if (legend) legend.style.display = (v === 'list') ? 'none' : 'flex';
+  ['map', 'bot', 'list'].forEach(function (k) {
+    var b = document.getElementById('dates-view-' + (k === 'bot' ? 'bot' : k));
+    if (b) { b.classList.toggle('dv-tab-on', k === v); b.setAttribute('aria-pressed', k === v); }
+  });
   var hint = document.getElementById('dates-hint');
-  if (hint) {
-    hint.textContent = (v === 'map')
-      ? 'Each square is one date \u2014 blank squares are dates with nothing logged at all. Reviewed = the date has real evaluations; the brighter the square, the more were logged. Click a square to open its logs.'
-      : 'One row per date that has logs. Reviewed = the date has real evaluations. No data = entries logged as not evaluated. Late upload = at least one entry was tagged as arriving late. Click a row to open its logs.';
-  }
+  var hints = {
+    map: 'Each square is one date \u2014 blank squares are dates with nothing logged at all. Reviewed = the date has real evaluations; the brighter the square, the more were logged. Click a square to open its logs.',
+    bot: 'One row per bot, one column per date. A blank square means that bot was never logged on that date; "No data" means it was logged but had nothing to evaluate. The count beside each name is how many dates that bot is blank. Click a square to open that bot\u2019s logs for that date.',
+    list: 'One row per date that has logs. Reviewed = the date has real evaluations. No data = entries logged as not evaluated. Late upload = at least one entry was tagged as arriving late. Click a row to open its logs.'
+  };
+  if (hint) hint.textContent = hints[v] || hints.map;
   renderDateOverview();
 }
 
@@ -1541,6 +1674,8 @@ function setDatesView(v) {
   });
   var bMap = document.getElementById('dates-view-map');
   if (bMap) bMap.addEventListener('click', function () { setDatesView('map'); });
+  var bBot = document.getElementById('dates-view-bot');
+  if (bBot) bBot.addEventListener('click', function () { setDatesView('bot'); });
   var bList = document.getElementById('dates-view-list');
   if (bList) bList.addEventListener('click', function () { setDatesView('list'); });
 })();
