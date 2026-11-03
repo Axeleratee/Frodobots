@@ -1364,14 +1364,62 @@ async function deleteOption(kind, key) {
 
 const STORAGE_KEY = 'behavior-entries';   // legacy local key — used only for one-time import
 
+// ---------- Team roster ----------
+// Who is on the team, by id. Attribution hangs off the user id; the username
+// is only ever for display, so renaming someone no longer detaches their
+// history the way a stored name string did.
+var _team = [];          // [{ id, username, role }]
+var _teamById = {};
+var _teamLoaded = false;
+
+async function loadTeam() {
+  if (!sb) return;
+  try {
+    const { data, error } = await sb.rpc('team_members');
+    if (error) throw error;
+    _team = (data || []).filter(function (u) { return u && u.id; });
+    _teamById = {};
+    _team.forEach(function (u) { _teamById[u.id] = u; });
+    _teamLoaded = true;
+  } catch (e) {
+    // team_members() missing just means the SQL has not been run yet: fall
+    // back to the names stored on each observation.
+    console.warn('team roster unavailable, using stored names', e && e.message);
+    _teamLoaded = false;
+  }
+  renderLogFilterOptions();
+  render();
+  if (typeof renderAssignments === 'function') renderAssignments();
+}
+
+// The display name for an observation. Prefer the roster entry for the user id
+// that wrote the row; fall back to the name stored on older rows.
+function observerName(e) {
+  if (!e) return '';
+  var u = e._by && _teamById[e._by];
+  return (u && u.username) || e.loggedBy || '';
+}
+
+function teamName(userId) {
+  var u = _teamById[userId];
+  return (u && u.username) || '';
+}
+
 // ---------- Supabase data layer (shared team log) ----------
 async function loadEntries() {
   try {
     if (!sb) { entries = []; }
     else {
-      const { data, error } = await sb.from('observations').select('id, entry').order('created_at', { ascending: true });
+      const { data, error } = await sb.from('observations')
+        .select('id, entry, created_at, created_by')
+        .order('created_at', { ascending: true });
       if (error) throw error;
-      entries = (data || []).map(r => Object.assign({}, r.entry, { id: r.id }));
+      // _by is the real user id and _at is when the row was written. Both live
+      // on the table, not inside the JSON blob, so neither can be edited by
+      // the form - and _at is what turnaround time is measured from.
+      entries = (data || []).map(r => Object.assign({}, r.entry, {
+        id: r.id, _by: r.created_by || null, _at: r.created_at || null
+      }));
     }
   } catch (e) { console.error('load failed', e); entries = []; }
   renderRobotFilter();
@@ -1382,12 +1430,16 @@ async function loadEntries() {
 }
 
 // The database owns the row id; strip the client id before storing the blob.
-function entryPayload(e) { const { id, ...rest } = e; return rest; }
+function entryPayload(e) { const { id, _by, _at, ...rest } = e; return rest; }
 
 async function dbAdd(entry) {
-  const { data, error } = await sb.from('observations').insert({ entry: entryPayload(entry) }).select('id, entry').single();
+  const { data, error } = await sb.from('observations')
+    .insert({ entry: entryPayload(entry) })
+    .select('id, entry, created_at, created_by').single();
   if (error) throw error;
-  return Object.assign({}, data.entry, { id: data.id });
+  return Object.assign({}, data.entry, {
+    id: data.id, _by: data.created_by || null, _at: data.created_at || null
+  });
 }
 async function dbUpdate(id, entry) {
   const { error } = await sb.from('observations').update({ entry: entryPayload(entry) }).eq('id', id);
@@ -1417,7 +1469,7 @@ function renderLogFilterOptions() {
   var userSel = document.getElementById('filter-user');
   if (userSel) {
     var curU = userSel.value;
-    var users = [...new Set(entries.map(function (e) { return e.loggedBy || ''; }))].filter(Boolean).sort();
+    var users = [...new Set(entries.map(observerName))].filter(Boolean).sort();
     userSel.innerHTML = '<option value="">All loggers</option>' + users.map(function (u) { return '<option value="' + esc(u) + '"' + (u === curU ? ' selected' : '') + '>' + esc(u) + '</option>'; }).join('');
   }
 }
@@ -1985,7 +2037,7 @@ function render() {
     if (issueF && !issueList(e).includes(issueF)) return false;
     if (fromF && (e.date || '') < fromF) return false;
     if (toF && (e.date || '') > toF) return false;
-    if (userF && (e.loggedBy || '') !== userF) return false;
+    if (userF && observerName(e) !== userF) return false;
     if (taskF && !taskList(e).includes(taskF)) return false;
     if (lateF === 'late' && !isLateUpload(e)) return false;
     if (lateF === 'ontime' && isLateUpload(e)) return false;
@@ -2012,7 +2064,7 @@ function render() {
       <td style="padding:6px 8px; vertical-align:top;">${issueCellText(e)}</td>
       <td style="padding:6px 8px; vertical-align:top;">${e.severity !== '' && e.severity != null ? e.severity + '%' : '—'}</td>
       <td style="padding:6px 8px; vertical-align:top; color:var(--text-secondary); word-break:break-word;">${esc(e.notes) || ''}</td>
-      <td style="padding:6px 8px; vertical-align:top; color:var(--text-muted); font-size:12px;">${esc(e.loggedBy || '—')}</td>
+      <td style="padding:6px 8px; vertical-align:top; color:var(--text-muted); font-size:12px;">${esc(observerName(e) || '—')}</td>
       <td style="padding:6px 8px; vertical-align:top; white-space:nowrap;">${rowActionsFull(e)}</td>
     </tr>${linksDetailRow(e, 8)}
   `).join('');
@@ -2419,7 +2471,7 @@ function renderDupNotice() {
     var what = (e.noData || issueList(e).includes('nodata'))
       ? '<span style="color:var(--text-danger);">No data</span>'
       : esc(taskList(e).join(', ') || '\u2014');
-    var who = e.loggedBy ? ' <span style="color:var(--text-muted);">by ' + esc(e.loggedBy) + '</span>' : '';
+    var who = observerName(e) ? ' <span style="color:var(--text-muted);">by ' + esc(observerName(e)) + '</span>' : '';
     return '<div style="display:flex; align-items:center; gap:8px; padding:5px 0; border-top:1px solid var(--border);">' +
       '<span style="flex:1; min-width:0; word-break:break-word;">' + what + who + '</span>' +
       (lateBadge(e) || '') +
@@ -2910,8 +2962,9 @@ function computePerfRows() {
   });
 
   entries.forEach(function (e) {
-    if (!e.loggedBy || !inWin(e.date)) return;
-    var b = bucket(e.loggedBy); if (!b) return;
+    var who = observerName(e);
+    if (!who || !inWin(e.date)) return;
+    var b = bucket(who); if (!b) return;
     b.logs++;
     b.logDates.push(e.date);
     if (e.robot) b.bots[e.robot] = (b.bots[e.robot] || 0) + 1;
@@ -4428,7 +4481,7 @@ function runIntro() {
       if (playIntro) { playIntro = false; intro = runIntro(); overlay.style.display = 'none'; }
       var loadP = loadEntries();
       if (intro) { await Promise.all([intro.done, loadP]); } else { await loadP; }
-      appReady = true; showApp(); applyRoleUI(); loadOptions(); loadReportHistory(); loadAuditLog();
+      appReady = true; showApp(); applyRoleUI(); loadTeam(); loadOptions(); loadReportHistory(); loadAuditLog();
       if (currentRole === 'admin') loadUsers();
       if (intro) await intro.dismiss();
       maybeOfferMigration();
