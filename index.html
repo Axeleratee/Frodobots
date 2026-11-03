@@ -687,6 +687,43 @@ html, body {
   <div id="page-users" style="display:none;">
   <div style="display:flex; flex-direction:column; gap:1.5rem;">
 
+  <div class="fb-card" id="card-assign">
+    <div style="font-size:15px; font-weight:500; margin-bottom:4px;">Assignments</div>
+    <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">
+      Who is responsible for which robot. This is what coverage is measured against &mdash;
+      without it, every number is just &ldquo;more is better&rdquo;.
+    </div>
+
+    <div id="assign-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px; align-items:end;">
+      <div>
+        <label style="font-size:12px; color:var(--text-secondary);">Member</label>
+        <select id="assign-user" style="width:100%;"></select>
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-secondary);">Robot</label>
+        <select id="assign-robot" style="width:100%;"></select>
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-secondary);">Starts on</label>
+        <input type="date" id="assign-start" style="width:100%;">
+      </div>
+      <div>
+        <button id="assign-add" style="background:var(--fill-primary); color:var(--on-primary); border:none; width:100%;">Assign</button>
+      </div>
+    </div>
+    <div id="assign-status" style="font-size:12.5px; margin-top:9px; min-height:17px; color:var(--text-secondary);"></div>
+
+    <div style="display:flex; align-items:center; gap:10px; margin:14px 0 10px; flex-wrap:wrap;">
+      <div style="font-size:13px; font-weight:600;">Current roster</div>
+      <span style="flex:1;"></span>
+      <label style="font-size:12px; color:var(--text-secondary); display:flex; align-items:center; gap:7px; cursor:pointer;">
+        <input type="checkbox" id="assign-show-ended" style="width:auto; margin:0;">
+        Show ended
+      </label>
+    </div>
+    <div id="assign-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+  </div>
+
   <div class="fb-card" id="card-team-chart">
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;">
       <div style="font-size:15px; font-weight:500; margin-right:auto;">Team activity</div>
@@ -1403,6 +1440,213 @@ function observerName(e) {
 function teamName(userId) {
   var u = _teamById[userId];
   return (u && u.username) || '';
+}
+
+// ---------- Assignments ----------
+// An assignment says: this person is responsible for this robot, from
+// starts_on until ends_on (or until further notice). It is the denominator
+// coverage is measured against. Rows may overlap on purpose - a handover, a
+// shared robot or a stand-in is a NEW row, never an edit to the past.
+var _assignments = [];
+var _assignLoaded = false;
+
+async function loadAssignments() {
+  if (!sb) return;
+  try {
+    const { data, error } = await sb.from('assignments')
+      .select('id, user_id, robot, starts_on, ends_on, note')
+      .order('starts_on', { ascending: false });
+    if (error) throw error;
+    _assignments = data || [];
+    _assignLoaded = true;
+  } catch (e) {
+    console.warn('assignments unavailable', e && e.message);
+    _assignments = [];
+    _assignLoaded = false;
+  }
+  renderAssignments();
+}
+
+// Is this robot this person's responsibility on this date?
+function assignmentCovers(a, robot, dateISO) {
+  return a.robot === robot &&
+         dateISO >= a.starts_on &&
+         (!a.ends_on || dateISO <= a.ends_on);
+}
+
+function activeAssignments(dateISO) {
+  var d = dateISO || localToday();
+  return _assignments.filter(function (a) {
+    return d >= a.starts_on && (!a.ends_on || d <= a.ends_on);
+  });
+}
+
+function renderAssignOptions() {
+  var uSel = document.getElementById('assign-user');
+  if (uSel) {
+    var cur = uSel.value;
+    // Viewers cannot log anything, so assigning them a robot would create a
+    // gap nobody can close. Only admins and editors can be responsible.
+    var canBeAssigned = _team.filter(function (u) { return u.role === 'admin' || u.role === 'editor'; });
+    uSel.innerHTML = canBeAssigned.length
+      ? canBeAssigned.map(function (u) {
+          return '<option value="' + escAttr(u.id) + '"' + (u.id === cur ? ' selected' : '') + '>' +
+                 esc(u.username) + (u.role === 'admin' ? ' (admin)' : '') + '</option>';
+        }).join('')
+      : '<option value="">No one can be assigned yet</option>';
+  }
+  var rSel = document.getElementById('assign-robot');
+  if (rSel) {
+    var curR = rSel.value;
+    rSel.innerHTML = allRobots().map(function (r) {
+      return '<option value="' + escAttr(r) + '"' + (r === curR ? ' selected' : '') + '>' + esc(r) + '</option>';
+    }).join('');
+  }
+  var dEl = document.getElementById('assign-start');
+  if (dEl && !dEl.value) dEl.value = localToday();
+}
+
+function renderAssignments() {
+  var list = document.getElementById('assign-list');
+  if (!list) return;
+  renderAssignOptions();
+
+  if (!_assignLoaded) {
+    list.innerHTML = '<div style="font-size:12.5px; color:#d9a93f; background:rgba(217,169,63,0.08); ' +
+      'border:1px solid rgba(217,169,63,0.28); border-radius:9px; padding:10px 12px;">' +
+      'Assignments are not set up yet \u2014 run <b>supabase-team.sql</b> in the Supabase SQL editor once, then refresh.' +
+      '</div>';
+    return;
+  }
+
+  var showEnded = !!(document.getElementById('assign-show-ended') || {}).checked;
+  var today = localToday();
+  var rows = _assignments.filter(function (a) {
+    return showEnded || !a.ends_on || a.ends_on >= today;
+  });
+
+  if (!rows.length) {
+    list.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">' +
+      (_assignments.length ? 'No active assignments. Tick \u201cShow ended\u201d to see past ones.'
+                           : 'Nobody is assigned yet. Pick a member and a robot above to start.') + '</div>';
+    return;
+  }
+
+  // Group by person: a team lead thinks in people, not in rows.
+  var byUser = {};
+  rows.forEach(function (a) {
+    (byUser[a.user_id] = byUser[a.user_id] || []).push(a);
+  });
+
+  list.innerHTML = Object.keys(byUser).sort(function (x, y) {
+    return (teamName(x) || '').localeCompare(teamName(y) || '');
+  }).map(function (uid) {
+    var mine = byUser[uid].slice().sort(function (a, b) { return a.robot.localeCompare(b.robot); });
+    var active = mine.filter(function (a) { return !a.ends_on || a.ends_on >= today; }).length;
+
+    var chips = mine.map(function (a) {
+      // "End today" means responsible THROUGH today, so a row ending today is
+      // still active - but its End button is spent, and saying so avoids a
+      // button that looks like it did nothing.
+      var ended  = a.ends_on && a.ends_on < today;
+      var closing = a.ends_on && a.ends_on >= today;
+      var range = a.starts_on + (a.ends_on ? ' \u2192 ' + a.ends_on : ' \u2192 now');
+      return '<div style="display:flex; align-items:center; gap:9px; padding:7px 0; border-top:1px solid var(--border); font-size:12.5px;' +
+        (ended ? ' opacity:.55;' : '') + '">' +
+        '<span style="font-weight:600; min-width:84px;">' + esc(a.robot) + '</span>' +
+        '<span style="color:var(--text-muted);">' + esc(range) + '</span>' +
+        '<span style="flex:1;"></span>' +
+        (ended   ? '<span style="color:var(--text-muted); font-size:11.5px;">ended</span>' :
+         closing ? '<span style="color:#d9a93f; font-size:11.5px;">ends ' + esc(a.ends_on) + '</span>'
+                 : '<button type="button" class="asg-end" data-id="' + escAttr(a.id) + '" ' +
+                   'style="font-size:11px; padding:2px 9px; background:transparent;">End today</button>') +
+        '<button type="button" class="asg-del" data-id="' + escAttr(a.id) + '" ' +
+        'title="Delete this row (use only for a mistake \u2014 ending it keeps the history)" ' +
+        'style="font-size:11px; padding:2px 9px; background:transparent; color:var(--text-danger);">Delete</button>' +
+        '</div>';
+    }).join('');
+
+    return '<div style="background:var(--surface-1); border:1px solid var(--border); border-radius:10px; padding:10px 12px;">' +
+      '<div style="display:flex; align-items:center; gap:9px;">' +
+        '<span style="font-weight:600;">' + esc(teamName(uid) || 'unknown user') + '</span>' +
+        '<span style="color:var(--text-muted); font-size:12px;">' + active + ' active</span>' +
+      '</div>' + chips + '</div>';
+  }).join('');
+
+  Array.prototype.forEach.call(list.querySelectorAll('.asg-end'), function (b) {
+    b.addEventListener('click', function () { endAssignment(b.dataset.id); });
+  });
+  Array.prototype.forEach.call(list.querySelectorAll('.asg-del'), function (b) {
+    b.addEventListener('click', function () { deleteAssignment(b.dataset.id); });
+  });
+}
+
+function assignStatus(msg, bad) {
+  var el = document.getElementById('assign-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = bad ? 'var(--text-danger)' : 'var(--text-secondary)';
+  if (msg) setTimeout(function () { if (el.textContent === msg) el.textContent = ''; }, 4000);
+}
+
+async function addAssignment() {
+  var uid = (document.getElementById('assign-user') || {}).value || '';
+  var robot = (document.getElementById('assign-robot') || {}).value || '';
+  var start = (document.getElementById('assign-start') || {}).value || '';
+  if (!uid || !robot || !start) { assignStatus('Pick a member, a robot and a start date.', true); return; }
+
+  // Already covered by this person on that date? Adding a second row would
+  // double-count the same obligation in every coverage figure.
+  var dup = _assignments.find(function (a) {
+    return a.user_id === uid && assignmentCovers(a, robot, start);
+  });
+  if (dup) {
+    assignStatus(teamName(uid) + ' already covers ' + robot + ' on that date.', true);
+    return;
+  }
+
+  var btn = document.getElementById('assign-add');
+  setBusy(btn, true);
+  try {
+    const { error } = await sb.from('assignments').insert({ user_id: uid, robot: robot, starts_on: start });
+    if (error) throw error;
+    await loadAssignments();
+    toast(robot + ' assigned to ' + teamName(uid));
+  } catch (e) {
+    assignStatus('Could not assign: ' + (e && e.message ? e.message : 'unknown error'), true);
+  } finally { setBusy(btn, false); }
+}
+
+async function endAssignment(id) {
+  var a = _assignments.find(function (x) { return x.id === id; });
+  if (!a) return;
+  var today = localToday();
+  // Ending before it started would leave a row that covers nothing; delete is
+  // the honest action there.
+  if (today < a.starts_on) {
+    if (!confirm('This assignment starts on ' + a.starts_on + ', which is still ahead.\n\nDelete it instead?')) return;
+    return deleteAssignment(id);
+  }
+  try {
+    const { error } = await sb.from('assignments').update({ ends_on: today }).eq('id', id);
+    if (error) throw error;
+    await loadAssignments();
+    toast(a.robot + ' ended for ' + teamName(a.user_id));
+  } catch (e) { assignStatus('Could not end it: ' + (e && e.message ? e.message : 'unknown error'), true); }
+}
+
+async function deleteAssignment(id) {
+  var a = _assignments.find(function (x) { return x.id === id; });
+  if (!a) return;
+  if (!confirm('Delete this assignment?\n\n' + teamName(a.user_id) + ' \u00b7 ' + a.robot +
+               ' \u00b7 from ' + a.starts_on +
+               '\n\nThis removes it from history. To stop it going forward while keeping the record, use "End today" instead.')) return;
+  try {
+    const { error } = await sb.from('assignments').delete().eq('id', id);
+    if (error) throw error;
+    await loadAssignments();
+    toast('Assignment deleted');
+  } catch (e) { assignStatus('Could not delete: ' + (e && e.message ? e.message : 'unknown error'), true); }
 }
 
 // ---------- Supabase data layer (shared team log) ----------
@@ -2403,7 +2647,15 @@ document.getElementById('tab-reporting').addEventListener('click', () => showPag
 document.getElementById('tab-users').addEventListener('click', function () {
   showPage('users');
   loadTeamChart();
+  renderAssignments();
 });
+
+(function () {
+  var add = document.getElementById('assign-add');
+  if (add) add.addEventListener('click', addAssignment);
+  var se = document.getElementById('assign-show-ended');
+  if (se) se.addEventListener('change', renderAssignments);
+})();
 document.getElementById('tab-performance').addEventListener('click', function () {
   showPage('performance');
   showPerfOverview();
@@ -4481,7 +4733,7 @@ function runIntro() {
       if (playIntro) { playIntro = false; intro = runIntro(); overlay.style.display = 'none'; }
       var loadP = loadEntries();
       if (intro) { await Promise.all([intro.done, loadP]); } else { await loadP; }
-      appReady = true; showApp(); applyRoleUI(); loadTeam(); loadOptions(); loadReportHistory(); loadAuditLog();
+      appReady = true; showApp(); applyRoleUI(); loadTeam(); loadAssignments(); loadOptions(); loadReportHistory(); loadAuditLog();
       if (currentRole === 'admin') loadUsers();
       if (intro) await intro.dismiss();
       maybeOfferMigration();
