@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 import harness as H
 
 chk = H.Checks(); errs = []
-url = H.build("app_dash.html", config={"REVIEW_DELAY_DAYS": 0})
+url = H.build("app_dash.html", config={"REVIEW_DELAY_DAYS": 0, "REST_DAYS": []})
 D = {n: H.days_ago(n) for n in range(0, 40)}
 
 obs, asg = [], [

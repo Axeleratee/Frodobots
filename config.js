@@ -12,5 +12,10 @@ window.APP_CONFIG = {
   // cleaned result reaches QA the day after - so review is structurally two
   // days behind, and that delay is not the reviewers' doing. Nothing is
   // counted as missing, or as late, until it has actually arrived.
-  REVIEW_DELAY_DAYS: 2
+  REVIEW_DELAY_DAYS: 2,
+
+  // Days of the week with no shift, so no review is expected and no gap is
+  // reported. 0 = Sunday, 1 = Monday ... 6 = Saturday. Set to [] if the team
+  // works every day.
+  REST_DAYS: [0]
 };

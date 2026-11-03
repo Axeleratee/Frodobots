@@ -25,6 +25,10 @@ with sync_playwright() as pw:
         "| %d" % pg.evaluate("() => entries.length"))
     pg.click("#tab-logs"); pg.wait_for_timeout(700)
     chk("table_rows", pg.eval_on_selector_all("#table-body tr[data-row]", "e => e.length") == 4)
+    # Table is the default view now; the calendar is one click away.
+    chk("table_is_default", pg.is_visible("#dates-table-wrap") and pg.eval_on_selector(
+        "#dates-view-table", "e => e.classList.contains('dv-tab-on')"))
+    pg.click("#dates-view-map"); pg.wait_for_timeout(900)
     chk("heatmap", pg.eval_on_selector_all("#dates-heatmap .hm-cell", "e => e.length") > 0)
     pg.click("#dates-view-bot"); pg.wait_for_timeout(900)
     chk("matrix", pg.eval_on_selector_all("#dates-matrix .hm-cell", "e => e.length") > 0)

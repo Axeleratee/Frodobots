@@ -9,5 +9,8 @@ window.APP_CONFIG = {
 
   // Days between an observation's date and the day it can actually be
   // reviewed (0 if your team reviews same-day).
-  REVIEW_DELAY_DAYS: 2
+  REVIEW_DELAY_DAYS: 2,
+
+  // Days of the week with no shift (0 = Sunday). [] if you work every day.
+  REST_DAYS: [0]
 };

@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 import harness as H
 
 chk = H.Checks(); errs = []
-url = H.build()
+url = H.build("app_delay.html", config={"REST_DAYS": []})
 D = {n: H.days_ago(n) for n in range(0, 15)}
 
 # cris owns Alpha for the last 8 days and has reviewed NOTHING.
@@ -64,7 +64,7 @@ with sync_playwright() as pw:
     pg2.locator("#card-team-ops").screenshot(path="/tmp/claude-0/ops_delay.png")
 
     # A same-day team (delay 0) must get the old behaviour back untouched.
-    url0 = H.build("app_nodelay.html", config={"REVIEW_DELAY_DAYS": 0})
+    url0 = H.build("app_nodelay.html", config={"REVIEW_DELAY_DAYS": 0, "REST_DAYS": []})
     pg3 = br.new_page(viewport={"width": 1400, "height": 1200})
     H.watch_errors(pg3, errs)
     pg3.goto(url0); H.seed(pg3, observations=obs, assignments=asg); H.login(pg3)
