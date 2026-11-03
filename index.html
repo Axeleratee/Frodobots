@@ -1706,8 +1706,7 @@ async function loadTeam() {
   }
   renderLogFilterOptions();
   render();
-  if (typeof renderAssignments === 'function') renderAssignments();
-  if (typeof renderTracker === 'function') renderTracker();
+  refreshTeamViews();
 }
 
 // The display name for an observation. Prefer the roster entry for the user id
@@ -1745,7 +1744,7 @@ async function loadAssignments() {
     _assignments = [];
     _assignLoaded = false;
   }
-  renderAssignments();
+  refreshTeamViews();
 }
 
 // Is this robot this person's responsibility on this date?
@@ -2444,8 +2443,18 @@ async function loadTasks() {
     _tasks = [];
     _tasksLoaded = false;
   }
-  renderTracker();
+  refreshTeamViews();
+}
+
+// Everything that is rebuilt when assignments, review tasks or the roster
+// arrive. Loaders call THIS, never a hand-picked subset: the date table was
+// left out of loadAssignments and so rendered once at startup, before the
+// assignments had loaded, leaving every reviewer blank for the whole session.
+function refreshTeamViews() {
+  if (typeof renderAssignments === 'function') renderAssignments();
+  if (typeof renderTracker === 'function') renderTracker();
   if (typeof renderDateTable === 'function') renderDateTable();
+  if (typeof renderTeamOps === 'function') renderTeamOps();
 }
 
 function trkCan(t) {
