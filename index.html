@@ -687,6 +687,7 @@ html, body {
     <div style="display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap;">
       <span id="trk-count" style="font-size:12.5px; color:var(--text-secondary);"></span>
       <span style="flex:1;"></span>
+      <button id="trk-catchup" style="font-size:12px; padding:5px 11px; display:none;">Close the ones with logs</button>
       <button id="trk-bulk" style="font-size:12px; padding:5px 11px; display:none;">Mark shown as done</button>
       <button id="trk-export" style="font-size:12px; padding:5px 11px;">Export CSV</button>
       <button id="trk-generate" style="font-size:12px; padding:5px 11px; display:none;">Create from assignments</button>
@@ -2700,10 +2701,17 @@ function renderTracker() {
   });
   // Offered only when there is actually something in view to finish.
   var bulk = document.getElementById('trk-bulk');
+  var mine = rows.filter(function (t) { return t.status !== 'completed' && trkCan(t); }).length;
   if (bulk) {
-    var mine = rows.filter(function (t) { return t.status !== 'completed' && trkCan(t); }).length;
     bulk.style.display = (_tasksLoaded && mine) ? '' : 'none';
     bulk.textContent = 'Mark ' + mine + ' shown as done';
+  }
+  // Only worth offering while some of those actually have logs behind them.
+  var cu = document.getElementById('trk-catchup');
+  if (cu) {
+    var withLogs = catchUpRows().length;
+    cu.style.display = (_tasksLoaded && withLogs) ? '' : 'none';
+    cu.textContent = 'Close ' + withLogs + ' that already have logs';
   }
 }
 
@@ -2916,6 +2924,45 @@ async function addTask() {
 // Finish every review currently in view that the person is allowed to move.
 // For catching up on a backlog; it never touches rows that are filtered out,
 // and it never touches someone else's work.
+// Which open reviews already have something logged for that bot-day?
+// Auto-complete only applies to logs saved from now on, so everything
+// logged before it was switched on sits Pending with its work already done.
+function catchUpRows() {
+  return trkFiltered().filter(function (t) {
+    return t.status !== 'completed' && trkCan(t) && trkHasObservations(t);
+  });
+}
+
+// A one-off tidy-up of that history. Deliberately NOT "mark everything":
+// only bot-days that actually have an entry are closed, so a review nobody
+// did is never claimed as done.
+async function catchUpFromLogs() {
+  var rows = catchUpRows();
+  if (!rows.length) { toast('No open reviews in this view already have logs.', true); return; }
+
+  if (!confirm('Close ' + rows.length + ' review' + (rows.length === 1 ? '' : 's') +
+               ' that already have an entry logged?\n\n' +
+               'Only bot-days with something logged are closed \u2014 ones with nothing ' +
+               'logged stay open. You can reopen any of them afterwards.')) return;
+
+  var btn = document.getElementById('trk-catchup');
+  setBusy(btn, true);
+  var failed = 0;
+  try {
+    for (var i = 0; i < rows.length; i++) {
+      const { error } = await sb.from('review_tasks')
+        .update({ status: 'completed' }).eq('id', rows[i].id);
+      if (error) failed++;
+    }
+    await loadTasks();
+    toast(failed ? (rows.length - failed) + ' closed, ' + failed + ' could not be changed'
+                 : rows.length + ' review' + (rows.length === 1 ? '' : 's') + ' closed',
+          !!failed);
+  } catch (e) {
+    toast('Could not close them: ' + (e && e.message ? e.message : 'unknown error'), true);
+  } finally { setBusy(btn, false); }
+}
+
 async function bulkComplete() {
   var rows = trkFiltered().filter(function (t) { return t.status !== 'completed' && trkCan(t); });
   if (!rows.length) { toast('Nothing in this view is yours to finish.', true); return; }
@@ -4440,6 +4487,8 @@ document.getElementById('tab-users').addEventListener('click', function () {
   if (save) save.addEventListener('click', addTask);
   var gen = document.getElementById('trk-generate');
   if (gen) gen.addEventListener('click', generateTasks);
+  var cuBtn = document.getElementById('trk-catchup');
+  if (cuBtn) cuBtn.addEventListener('click', catchUpFromLogs);
   var bulkBtn = document.getElementById('trk-bulk');
   if (bulkBtn) bulkBtn.addEventListener('click', bulkComplete);
   var exp = document.getElementById('trk-export');
