@@ -56,13 +56,23 @@ def build(name="app.html", config=None):
     return "file://" + str(out)
 
 
+def task(tid, date, robot, reviewer=None, status="pending", updated=None):
+    done = status == "completed"
+    return {"id": tid, "obs_date": date, "robot": robot, "reviewer_id": reviewer,
+            "status": status, "notes": None,
+            "created_at": date + "T08:00:00Z",
+            "updated_at": updated or (date + "T08:00:00Z"),
+            "completed_at": (updated or (date + "T08:00:00Z")) if done else None}
+
+
 def seed(page, observations=None, assignments=None, options=None,
-         profiles=None, missing=()):
+         profiles=None, missing=(), tasks=None):
     """Load fixtures into localStorage, then reload so the app reads them."""
     page.evaluate(
-        """([obs, asg, opt, prof, miss]) => {
+        """([obs, asg, opt, prof, miss, tsk]) => {
           localStorage.setItem('__mock_table', JSON.stringify(obs));
           localStorage.setItem('__mock_assignments', JSON.stringify(asg));
+          localStorage.setItem('__mock_tasks', JSON.stringify(tsk));
           localStorage.setItem('__mock_options', JSON.stringify(opt));
           localStorage.setItem('__mock_profiles', JSON.stringify(prof));
           localStorage.setItem('__mock_reports', '[]');
@@ -70,7 +80,7 @@ def seed(page, observations=None, assignments=None, options=None,
           miss.forEach(m => localStorage.setItem('__mock_' + m + '_missing', '1'));
         }""",
         [observations or [], assignments or [], options or [],
-         profiles or PROFILES, list(missing)])
+         profiles or PROFILES, list(missing), tasks or []])
     page.reload()
 
 
@@ -78,7 +88,7 @@ def login(page, user="boss", timeout=9000):
     page.fill("#auth-username", user)
     page.fill("#auth-password", "x")
     page.click("#auth-submit")
-    page.wait_for_selector("#card-log", state="visible", timeout=timeout)
+    page.wait_for_selector(".fb-tabs", state="visible", timeout=timeout)
     page.wait_for_timeout(700)
 
 

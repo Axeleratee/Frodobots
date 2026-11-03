@@ -512,6 +512,7 @@ html, body {
   <div class="fb-tabs">
     <button class="fb-tab fb-tab-active" id="tab-dashboard">Dashboard</button>
     <button class="fb-tab" id="tab-logs">Logs</button>
+    <button class="fb-tab" id="tab-tracker">Progress Tracker</button>
     <button class="fb-tab" id="tab-reporting">Reporting</button>
     <button class="fb-tab" id="tab-performance" style="display:none;">User Performance</button>
     <button class="fb-tab" id="tab-users" style="display:none;">User Management</button>
@@ -624,6 +625,141 @@ html, body {
     </div>
     <div id="recent-empty" style="display:none; text-align:center; color:var(--text-muted); padding:1.5rem 0; font-size:13px;">No observations logged yet.</div>
   </div>
+  </div>
+  </div>
+
+  <div id="page-tracker" style="display:none;">
+  <div style="display:flex; flex-direction:column; gap:1.5rem;">
+
+  <div class="fb-card" id="card-trk-summary">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;">
+      <div style="font-size:15px; font-weight:500; margin-right:auto;">Progress tracker</div>
+      <span id="trk-scope" style="font-size:12px; color:var(--text-muted);"></span>
+    </div>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+      One row per review someone owes. A review is only finished when the reviewer marks it
+      finished &mdash; logging an observation does not close it on their behalf.
+    </div>
+    <div id="trk-cards" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:11px;"></div>
+  </div>
+
+  <div class="fb-card" id="card-trk-table">
+    <div id="trk-filters" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(135px,1fr)); gap:9px; align-items:end;">
+      <div>
+        <label style="font-size:12px; color:var(--text-secondary);">From</label>
+        <input type="date" id="trk-from" style="width:100%;">
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-secondary);">To</label>
+        <input type="date" id="trk-to" style="width:100%;">
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-secondary);">Reviewer</label>
+        <select id="trk-f-reviewer" style="width:100%;"></select>
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-secondary);">Bot</label>
+        <select id="trk-f-robot" style="width:100%;"></select>
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-secondary);">Status</label>
+        <select id="trk-f-status" style="width:100%;">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="in_progress">In progress</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-secondary);">Search</label>
+        <input type="text" id="trk-search" placeholder="bot, reviewer, note" style="width:100%;">
+      </div>
+      <div>
+        <button id="trk-clear" style="width:100%;">Clear</button>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap;">
+      <span id="trk-count" style="font-size:12.5px; color:var(--text-secondary);"></span>
+      <span style="flex:1;"></span>
+      <button id="trk-export" style="font-size:12px; padding:5px 11px;">Export CSV</button>
+      <button id="trk-generate" style="font-size:12px; padding:5px 11px; display:none;">Create from assignments</button>
+      <button id="trk-add-toggle" style="font-size:12px; padding:5px 11px; display:none; background:var(--fill-primary); color:var(--on-primary); border:none;">Add review</button>
+    </div>
+
+    <div id="trk-add" style="display:none; margin-top:11px; padding:11px 12px; background:var(--surface-1); border:1px solid var(--border); border-radius:10px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:9px; align-items:end;">
+        <div>
+          <label style="font-size:12px; color:var(--text-secondary);">Date</label>
+          <input type="date" id="trk-n-date" style="width:100%;">
+        </div>
+        <div>
+          <label style="font-size:12px; color:var(--text-secondary);">Bot</label>
+          <select id="trk-n-robot" style="width:100%;"></select>
+        </div>
+        <div>
+          <label style="font-size:12px; color:var(--text-secondary);">Reviewer</label>
+          <select id="trk-n-reviewer" style="width:100%;"></select>
+        </div>
+        <div>
+          <label style="font-size:12px; color:var(--text-secondary);">Status</label>
+          <select id="trk-n-status" style="width:100%;">
+            <option value="pending" selected>Pending</option>
+            <option value="in_progress">In progress</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+        <div>
+          <button id="trk-n-save" style="width:100%; background:var(--fill-primary); color:var(--on-primary); border:none;">Add</button>
+        </div>
+      </div>
+      <div id="trk-n-status-msg" style="font-size:12.5px; margin-top:8px; min-height:17px; color:var(--text-secondary);"></div>
+    </div>
+
+    <div style="overflow-x:auto; margin-top:12px;">
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px; min-width:760px;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border-strong); text-align:left; color:var(--text-secondary);">
+            <th class="trk-sort" data-sort="date"     style="padding:7px 8px; cursor:pointer; white-space:nowrap;">Date</th>
+            <th class="trk-sort" data-sort="reviewer" style="padding:7px 8px; cursor:pointer; white-space:nowrap;">HBA reviewer</th>
+            <th class="trk-sort" data-sort="robot"    style="padding:7px 8px; cursor:pointer; white-space:nowrap;">Bot</th>
+            <th class="trk-sort" data-sort="status"   style="padding:7px 8px; cursor:pointer; white-space:nowrap;">Status</th>
+            <th style="padding:7px 8px; white-space:nowrap;">Done</th>
+            <th class="trk-sort" data-sort="updated"  style="padding:7px 8px; cursor:pointer; white-space:nowrap;">Last updated</th>
+            <th style="padding:7px 8px;"></th>
+          </tr>
+        </thead>
+        <tbody id="trk-body"></tbody>
+      </table>
+    </div>
+    <div id="trk-empty" style="display:none; font-size:12.5px; color:var(--text-muted); padding:14px 2px;"></div>
+  </div>
+
+  <div class="fb-card" id="card-trk-analytics">
+    <div style="font-size:15px; font-weight:500; margin-bottom:14px;">Breakdown</div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(270px,1fr)); gap:20px;">
+      <div>
+        <div style="font-size:13px; font-weight:600; margin-bottom:9px;">Each reviewer</div>
+        <div id="trk-by-reviewer" style="display:flex; flex-direction:column; gap:9px;"></div>
+      </div>
+      <div>
+        <div style="font-size:13px; font-weight:600; margin-bottom:9px;">Each bot</div>
+        <div id="trk-by-robot" style="display:flex; flex-direction:column; gap:9px;"></div>
+      </div>
+    </div>
+    <div style="margin-top:20px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+        <div style="font-size:13px; font-weight:600;">Finished over time</div>
+        <span style="flex:1;"></span>
+        <select id="trk-trend-grain" style="width:auto; font-size:11.5px; padding:3px 24px 3px 8px;">
+          <option value="day" selected>By day</option>
+          <option value="week">By week</option>
+        </select>
+      </div>
+      <div id="trk-trend"></div>
+    </div>
+  </div>
+
   </div>
   </div>
 
@@ -1469,6 +1605,7 @@ async function loadTeam() {
   renderLogFilterOptions();
   render();
   if (typeof renderAssignments === 'function') renderAssignments();
+  if (typeof renderTracker === 'function') renderTracker();
 }
 
 // The display name for an observation. Prefer the roster entry for the user id
@@ -2103,6 +2240,530 @@ function renderTeamOps() {
   renderOpsBacklog();
   renderOpsRail();
   renderOpsTrend();
+}
+
+/* =====================================================================
+   PROGRESS TRACKER
+
+   One row per review someone owes: <reviewer> reviews <robot> for <date>.
+
+   Status is set by a person and NEVER inferred. A reviewer may log part of
+   a day's work and come back to it, so the existence of an observation
+   does not mean the review is finished - only the reviewer can say that.
+   The table does show whether any observation exists, as a hint, but it
+   never moves the status on their behalf.
+   ===================================================================== */
+var _tasks = [];
+var _tasksLoaded = false;
+var _trkSort = { key: 'date', dir: -1 };     // newest first
+
+const TRK_STATUS = {
+  pending:     { label: 'Pending',     color: 'var(--text-danger)', bg: 'rgba(255,111,111,0.10)', border: 'rgba(255,111,111,0.28)' },
+  in_progress: { label: 'In progress', color: '#d9a93f',            bg: 'rgba(217,169,63,0.12)',  border: 'rgba(217,169,63,0.32)' },
+  completed:   { label: 'Completed',   color: 'var(--fb-green)',    bg: 'rgba(95,224,160,0.12)',  border: 'rgba(95,224,160,0.30)' }
+};
+const TRK_ORDER = { pending: 0, in_progress: 1, completed: 2 };
+
+async function loadTasks() {
+  if (!sb) return;
+  try {
+    const { data, error } = await sb.from('review_tasks')
+      .select('id, obs_date, robot, reviewer_id, status, notes, updated_at, completed_at')
+      .order('obs_date', { ascending: false });
+    if (error) throw error;
+    _tasks = data || [];
+    _tasksLoaded = true;
+  } catch (e) {
+    console.warn('review_tasks unavailable', e && e.message);
+    _tasks = [];
+    _tasksLoaded = false;
+  }
+  renderTracker();
+}
+
+function trkCan(t) {
+  // Admins run the board; a reviewer may move their own work along.
+  if (currentRole === 'admin') return true;
+  return currentRole === 'editor' && t && t.reviewer_id === currentUserId();
+}
+function currentUserId() {
+  return (window.__sessionUserId || null);
+}
+
+// Does any observation exist for this bot-day? Shown as a hint only.
+function trkHasObservations(t) {
+  return entries.some(function (e) { return e.robot === t.robot && e.date === t.obs_date; });
+}
+
+function trkFilters() {
+  var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
+  return {
+    from: g('trk-from'), to: g('trk-to'),
+    reviewer: g('trk-f-reviewer'), robot: g('trk-f-robot'),
+    status: g('trk-f-status'), q: g('trk-search').toLowerCase().trim()
+  };
+}
+
+function trkFiltered() {
+  var f = trkFilters();
+  return _tasks.filter(function (t) {
+    if (f.from && t.obs_date < f.from) return false;
+    if (f.to && t.obs_date > f.to) return false;
+    if (f.reviewer && String(t.reviewer_id || '') !== f.reviewer) return false;
+    if (f.robot && t.robot !== f.robot) return false;
+    if (f.status && t.status !== f.status) return false;
+    if (f.q) {
+      var hay = (t.robot + ' ' + (teamName(t.reviewer_id) || '') + ' ' + (t.notes || '')).toLowerCase();
+      if (hay.indexOf(f.q) === -1) return false;
+    }
+    return true;
+  }).sort(function (a, b) {
+    var k = _trkSort.key, d = _trkSort.dir, v = 0;
+    if (k === 'date') v = a.obs_date.localeCompare(b.obs_date);
+    else if (k === 'reviewer') v = (teamName(a.reviewer_id) || '~').localeCompare(teamName(b.reviewer_id) || '~');
+    else if (k === 'robot') v = a.robot.localeCompare(b.robot);
+    else if (k === 'status') v = TRK_ORDER[a.status] - TRK_ORDER[b.status];
+    else if (k === 'updated') v = String(a.updated_at || '').localeCompare(String(b.updated_at || ''));
+    // Date is the tie-breaker everywhere else, so rows never jump around.
+    return v !== 0 ? v * d : a.obs_date.localeCompare(b.obs_date) * -1;
+  });
+}
+
+function trkCounts(rows) {
+  var c = { total: rows.length, pending: 0, in_progress: 0, completed: 0 };
+  rows.forEach(function (t) { c[t.status]++; });
+  c.rate = c.total ? Math.round((c.completed / c.total) * 100) : null;
+  return c;
+}
+
+/* ---------- Progress tracker: rendering ---------- */
+
+function trkPill(status) {
+  var m = TRK_STATUS[status] || TRK_STATUS.pending;
+  return '<span style="font-size:11px; padding:2px 9px; border-radius:20px; white-space:nowrap; color:' +
+    m.color + '; background:' + m.bg + '; border:1px solid ' + m.border + ';">' + esc(m.label) + '</span>';
+}
+
+function trkWhen(ts) {
+  if (!ts) return '\u2014';
+  var d = String(ts).slice(0, 10), t = String(ts).slice(11, 16);
+  return plainDate(d) + (t ? ' ' + t : '');
+}
+
+function renderTrkOptions() {
+  var rSel = document.getElementById('trk-f-reviewer');
+  if (rSel) {
+    var cur = rSel.value;
+    rSel.innerHTML = '<option value="">All reviewers</option>' +
+      _team.map(function (u) {
+        return '<option value="' + escAttr(u.id) + '"' + (u.id === cur ? ' selected' : '') + '>' +
+               esc(u.username) + '</option>';
+      }).join('');
+  }
+  // Only bots that actually appear on the board, plus the known roster for
+  // the add form - filtering by a bot with no rows is a dead end.
+  var onBoard = [...new Set(_tasks.map(function (t) { return t.robot; }))].sort();
+  var bSel = document.getElementById('trk-f-robot');
+  if (bSel) {
+    var curB = bSel.value;
+    bSel.innerHTML = '<option value="">All bots</option>' +
+      onBoard.map(function (r) {
+        return '<option value="' + escAttr(r) + '"' + (r === curB ? ' selected' : '') + '>' + esc(r) + '</option>';
+      }).join('');
+  }
+  var nB = document.getElementById('trk-n-robot');
+  if (nB) {
+    var curNB = nB.value;
+    nB.innerHTML = allRobots().map(function (r) {
+      return '<option value="' + escAttr(r) + '"' + (r === curNB ? ' selected' : '') + '>' + esc(r) + '</option>';
+    }).join('');
+  }
+  var nR = document.getElementById('trk-n-reviewer');
+  if (nR) {
+    var curNR = nR.value;
+    var able = _team.filter(function (u) { return u.role === 'admin' || u.role === 'editor'; });
+    nR.innerHTML = '<option value="">Nobody yet</option>' +
+      able.map(function (u) {
+        return '<option value="' + escAttr(u.id) + '"' + (u.id === curNR ? ' selected' : '') + '>' +
+               esc(u.username) + '</option>';
+      }).join('');
+  }
+  var nd = document.getElementById('trk-n-date');
+  if (nd && !nd.value) nd.value = (typeof latestReviewableDate === 'function') ? latestReviewableDate() : localToday();
+}
+
+function renderTrkCards(rows) {
+  var host = document.getElementById('trk-cards');
+  if (!host) return;
+  var c = trkCounts(rows);
+  var tile = function (label, value, color, sub) {
+    return '<div style="background:var(--surface-1); border:1px solid var(--border); border-radius:11px; padding:10px 12px;">' +
+      '<div style="font-size:11px; letter-spacing:0.03em; color:var(--text-muted);">' + esc(label) + '</div>' +
+      '<div style="font-size:23px; font-weight:600; color:' + color + ';">' + value + '</div>' +
+      (sub ? '<div style="font-size:11px; color:var(--text-muted);">' + esc(sub) + '</div>' : '') +
+      '</div>';
+  };
+  host.innerHTML =
+    tile('TOTAL REVIEWS', c.total, 'var(--text-primary)', 'in this view') +
+    tile('COMPLETED', c.completed, TRK_STATUS.completed.color) +
+    tile('IN PROGRESS', c.in_progress, TRK_STATUS.in_progress.color) +
+    tile('PENDING', c.pending, TRK_STATUS.pending.color) +
+    tile('COMPLETION RATE', c.rate === null ? '\u2014' : c.rate + '%',
+         c.rate === null ? 'var(--text-muted)' : covColor(c.rate),
+         c.rate === null ? 'nothing to measure' : c.completed + ' of ' + c.total + ' finished');
+}
+
+function renderTrkTable(rows) {
+  var body = document.getElementById('trk-body');
+  var empty = document.getElementById('trk-empty');
+  var count = document.getElementById('trk-count');
+  if (!body) return;
+
+  if (count) {
+    count.textContent = rows.length
+      ? rows.length + ' review' + (rows.length === 1 ? '' : 's') + ' shown' +
+        (rows.length !== _tasks.length ? ' of ' + _tasks.length : '')
+      : '';
+  }
+
+  // Show which column is sorted, and which way.
+  Array.prototype.forEach.call(document.querySelectorAll('.trk-sort'), function (th) {
+    var on = th.dataset.sort === _trkSort.key;
+    th.style.color = on ? 'var(--text-primary)' : 'var(--text-secondary)';
+    var base = th.textContent.replace(/\s*[\u2191\u2193]$/, '');
+    th.textContent = base + (on ? (_trkSort.dir > 0 ? ' \u2191' : ' \u2193') : '');
+  });
+
+  if (!rows.length) {
+    body.innerHTML = '';
+    if (empty) {
+      empty.style.display = 'block';
+      empty.textContent = !_tasksLoaded
+        ? 'The tracker is not set up yet \u2014 run supabase-tracker.sql in the Supabase SQL editor once, then refresh.'
+        : (_tasks.length ? 'No reviews match these filters.'
+                         : 'No reviews on the board yet. Use \u201cCreate from assignments\u201d to fill it from who owns which bot.');
+    }
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  body.innerHTML = rows.map(function (t) {
+    var mine = trkCan(t);
+    var hint = trkHasObservations(t)
+      ? '<span title="Observations exist for this bot and date. The review is still only finished when you say so." ' +
+        'style="font-size:10.5px; color:var(--text-muted);">has logs</span>'
+      : '';
+    var sel = mine
+      ? '<select class="trk-st" data-id="' + escAttr(t.id) + '" style="width:auto; font-size:11.5px; padding:3px 24px 3px 8px;">' +
+        Object.keys(TRK_STATUS).map(function (k) {
+          return '<option value="' + k + '"' + (k === t.status ? ' selected' : '') + '>' + TRK_STATUS[k].label + '</option>';
+        }).join('') + '</select>'
+      : trkPill(t.status);
+
+    var done = t.status === 'completed'
+      ? '<span style="color:var(--fb-green); font-size:15px;">\u2713</span>'
+      : (mine ? '<button type="button" class="trk-done" data-id="' + escAttr(t.id) + '" ' +
+                'title="Mark this review finished" style="font-size:11px; padding:2px 9px; background:transparent;">Mark done</button>'
+              : '<span style="color:var(--text-muted);">\u2014</span>');
+
+    return '<tr data-task="' + escAttr(t.id) + '" style="border-bottom:0.5px solid var(--border);">' +
+      '<td style="padding:7px 8px; white-space:nowrap;">' + esc(plainDate(t.obs_date)) + '</td>' +
+      '<td style="padding:7px 8px;">' + esc(teamName(t.reviewer_id) || 'Unassigned') + '</td>' +
+      '<td style="padding:7px 8px; font-weight:600;">' + esc(t.robot) +
+        (hint ? ' ' + hint : '') + '</td>' +
+      '<td style="padding:7px 8px;">' + sel + '</td>' +
+      '<td style="padding:7px 8px; text-align:center;">' + done + '</td>' +
+      '<td style="padding:7px 8px; color:var(--text-muted); white-space:nowrap;">' + esc(trkWhen(t.updated_at)) + '</td>' +
+      '<td style="padding:7px 8px; white-space:nowrap;">' +
+        (currentRole === 'admin'
+          ? '<button type="button" class="trk-del" data-id="' + escAttr(t.id) + '" aria-label="Delete" title="Delete" ' +
+            'style="font-size:11px; padding:2px 9px; background:transparent; color:var(--text-danger);">Delete</button>'
+          : '') +
+      '</td></tr>';
+  }).join('');
+
+  Array.prototype.forEach.call(body.querySelectorAll('.trk-st'), function (el) {
+    el.addEventListener('change', function () { setTaskStatus(el.dataset.id, el.value); });
+  });
+  Array.prototype.forEach.call(body.querySelectorAll('.trk-done'), function (el) {
+    el.addEventListener('click', function () { setTaskStatus(el.dataset.id, 'completed'); });
+  });
+  Array.prototype.forEach.call(body.querySelectorAll('.trk-del'), function (el) {
+    el.addEventListener('click', function () { deleteTask(el.dataset.id); });
+  });
+}
+
+function renderTracker() {
+  if (!document.getElementById('card-trk-table')) return;
+  renderTrkOptions();
+  var rows = trkFiltered();
+  renderTrkCards(rows);
+  renderTrkTable(rows);
+  renderTrkAnalytics(rows);
+
+  var scope = document.getElementById('trk-scope');
+  if (scope) scope.textContent = _tasksLoaded ? (_tasks.length + ' on the board') : 'not set up yet';
+
+  var isAdmin = currentRole === 'admin';
+  ['trk-add-toggle', 'trk-generate'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) b.style.display = (isAdmin && _tasksLoaded) ? '' : 'none';
+  });
+}
+
+/* ---------- Progress tracker: analytics ---------- */
+
+function trkStackBar(c) {
+  var seg = function (n, col) {
+    return n ? '<div style="width:' + ((n / c.total) * 100) + '%; background:' + col + ';"></div>' : '';
+  };
+  return '<div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--surface-0); gap:1px;">' +
+    seg(c.completed, TRK_STATUS.completed.color) +
+    seg(c.in_progress, TRK_STATUS.in_progress.color) +
+    seg(c.pending, TRK_STATUS.pending.color) +
+    '</div>';
+}
+
+function trkGroupBlock(label, c) {
+  return '<div>' +
+    '<div style="display:flex; align-items:baseline; gap:8px; font-size:12.5px;">' +
+      '<span style="font-weight:600;">' + esc(label) + '</span>' +
+      '<span style="flex:1;"></span>' +
+      '<span style="color:var(--text-secondary);">' + c.completed + ' of ' + c.total + ' done</span>' +
+      '<span style="color:' + (c.rate === null ? 'var(--text-muted)' : covColor(c.rate)) +
+        '; font-weight:600; min-width:38px; text-align:right;">' +
+        (c.rate === null ? '\u2014' : c.rate + '%') + '</span>' +
+    '</div>' +
+    '<div style="margin-top:4px;">' + trkStackBar(c) + '</div>' +
+    (c.pending || c.in_progress
+      ? '<div style="font-size:11px; color:var(--text-muted); margin-top:3px;">' +
+        [c.in_progress ? c.in_progress + ' in progress' : '', c.pending ? c.pending + ' pending' : '']
+          .filter(Boolean).join(' \u00b7 ') + '</div>'
+      : '') +
+    '</div>';
+}
+
+function renderTrkAnalytics(rows) {
+  var byR = document.getElementById('trk-by-reviewer');
+  var byB = document.getElementById('trk-by-robot');
+  if (!byR || !byB) return;
+
+  function group(keyOf, nameOf) {
+    var m = {};
+    rows.forEach(function (t) {
+      var k = keyOf(t);
+      (m[k] = m[k] || []).push(t);
+    });
+    // Least finished first: the point of a breakdown is to find the laggard.
+    return Object.keys(m).map(function (k) {
+      return { key: k, name: nameOf(k), counts: trkCounts(m[k]) };
+    }).sort(function (a, b) {
+      var ra = a.counts.rate === null ? 101 : a.counts.rate;
+      var rb = b.counts.rate === null ? 101 : b.counts.rate;
+      return ra !== rb ? ra - rb : a.name.localeCompare(b.name);
+    });
+  }
+
+  var empty = '<div style="font-size:12.5px; color:var(--text-muted);">Nothing to show for these filters.</div>';
+
+  var rg = group(function (t) { return t.reviewer_id || ''; },
+                 function (k) { return teamName(k) || 'Unassigned'; });
+  byR.innerHTML = rg.length ? rg.map(function (g) { return trkGroupBlock(g.name, g.counts); }).join('') : empty;
+
+  var bg = group(function (t) { return t.robot; }, function (k) { return k; });
+  byB.innerHTML = bg.length ? bg.map(function (g) { return trkGroupBlock(g.name, g.counts); }).join('') : empty;
+
+  renderTrkTrend(rows);
+}
+
+// When reviews were FINISHED, by the day they were completed - not by the
+// date of the data. This is throughput: what the team actually closed.
+function renderTrkTrend(rows) {
+  var host = document.getElementById('trk-trend');
+  if (!host) return;
+  var grain = (document.getElementById('trk-trend-grain') || {}).value || 'day';
+  var done = rows.filter(function (t) { return t.status === 'completed' && t.completed_at; });
+
+  if (!done.length) {
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">' +
+      'Nothing has been marked finished yet in this view.</div>';
+    return;
+  }
+
+  var buckets = {};
+  done.forEach(function (t) {
+    var d = String(t.completed_at).slice(0, 10);
+    var k = grain === 'week' ? weekRange(d).from : d;
+    buckets[k] = (buckets[k] || 0) + 1;
+  });
+
+  var keys = Object.keys(buckets).sort();
+  // Fill the gaps so a quiet day reads as zero rather than disappearing.
+  var step = grain === 'week' ? 7 : 1;
+  var all = [], cur = keys[0], last = keys[keys.length - 1], guard = 0;
+  while (cur <= last && guard++ < 400) { all.push(cur); cur = isoShift(cur, step); }
+  if (all.length > 40) all = all.slice(-40);
+
+  var max = Math.max.apply(null, all.map(function (k) { return buckets[k] || 0; })) || 1;
+  host.innerHTML =
+    '<div style="display:flex; align-items:flex-end; gap:3px; height:96px; background:var(--surface-0); ' +
+    'border:1px solid var(--border); border-radius:9px; padding:9px 10px 6px;">' +
+    all.map(function (k) {
+      var n = buckets[k] || 0;
+      var h = n ? Math.max(4, (n / max) * 100) : 0;
+      var title = (grain === 'week' ? 'Week of ' : '') + plainDate(k) + ' \u2014 ' +
+                  n + ' finished';
+      return '<div title="' + escAttr(title) + '" style="flex:1; max-width:52px; display:flex; ' +
+        'flex-direction:column; justify-content:flex-end; height:100%; min-width:0;">' +
+        (n ? '<div style="height:' + h + '%; border-radius:3px 3px 0 0; background:var(--fb-green);"></div>'
+           : '<div style="height:3px; border-radius:2px; background:var(--border-strong);"></div>') +
+        '</div>';
+    }).join('') + '</div>' +
+    '<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--text-muted); margin-top:4px;">' +
+      '<span>' + esc(plainDate(all[0])) + '</span>' +
+      '<span>' + done.length + ' finished \u00b7 peak ' + max + '</span>' +
+      '<span>' + esc(plainDate(all[all.length - 1])) + '</span></div>';
+}
+
+/* ---------- Progress tracker: changing things ---------- */
+
+function trkMsg(msg, bad) {
+  var el = document.getElementById('trk-n-status-msg');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = bad ? 'var(--text-danger)' : 'var(--text-secondary)';
+  if (msg) setTimeout(function () { if (el.textContent === msg) el.textContent = ''; }, 4500);
+}
+
+async function setTaskStatus(id, status) {
+  var t = _tasks.find(function (x) { return x.id === id; });
+  if (!t || !trkCan(t)) return;
+  var was = t.status;
+  if (was === status) return;
+  t.status = status;                    // optimistic: the board feels instant
+  renderTracker();
+  try {
+    const { error } = await sb.from('review_tasks').update({ status: status }).eq('id', id);
+    if (error) throw error;
+    await loadTasks();
+    toast(t.robot + ' \u00b7 ' + plainDate(t.obs_date) + ' \u2192 ' + TRK_STATUS[status].label);
+  } catch (e) {
+    t.status = was;                     // put it back; the server said no
+    renderTracker();
+    toast('Could not update: ' + (e && e.message ? e.message : 'unknown error'), true);
+  }
+}
+
+async function addTask() {
+  var date = (document.getElementById('trk-n-date') || {}).value || '';
+  var robot = (document.getElementById('trk-n-robot') || {}).value || '';
+  var reviewer = (document.getElementById('trk-n-reviewer') || {}).value || '';
+  var status = (document.getElementById('trk-n-status') || {}).value || 'pending';
+  if (!date || !robot) { trkMsg('Pick a date and a bot.', true); return; }
+
+  // Caught here as well as by the database, so the person gets a sentence
+  // rather than a constraint violation.
+  var dup = _tasks.find(function (t) {
+    return t.obs_date === date && t.robot === robot && String(t.reviewer_id || '') === reviewer;
+  });
+  if (dup) {
+    trkMsg(robot + ' on ' + plainDate(date) + ' is already on the board for ' +
+           (teamName(reviewer) || 'nobody') + '.', true);
+    return;
+  }
+
+  var btn = document.getElementById('trk-n-save');
+  setBusy(btn, true);
+  try {
+    const { error } = await sb.from('review_tasks').insert({
+      obs_date: date, robot: robot, reviewer_id: reviewer || null, status: status
+    });
+    if (error) throw error;
+    await loadTasks();
+    trkMsg('Added.');
+    toast(robot + ' \u00b7 ' + plainDate(date) + ' added to the board');
+  } catch (e) {
+    trkMsg('Could not add: ' + (e && e.message ? e.message : 'unknown error'), true);
+  } finally { setBusy(btn, false); }
+}
+
+async function deleteTask(id) {
+  var t = _tasks.find(function (x) { return x.id === id; });
+  if (!t) return;
+  if (!confirm('Remove this review from the board?\n\n' + t.robot + ' \u00b7 ' + plainDate(t.obs_date) +
+               ' \u00b7 ' + (teamName(t.reviewer_id) || 'unassigned') +
+               '\n\nObservations already logged are not touched.')) return;
+  try {
+    const { error } = await sb.from('review_tasks').delete().eq('id', id);
+    if (error) throw error;
+    await loadTasks();
+    toast('Removed from the board');
+  } catch (e) { toast('Could not remove: ' + (e && e.message ? e.message : 'unknown error'), true); }
+}
+
+// Fill the board from who owns which bot, for a date range. This is how a
+// week of rows gets created without typing each one. It only ADDS what is
+// missing - an existing row keeps whatever status it already has.
+async function generateTasks() {
+  if (currentRole !== 'admin') return;
+  if (!_assignments.length) {
+    toast('Assign robots to people first, under User Management.', true);
+    return;
+  }
+  var to = (typeof latestReviewableDate === 'function') ? latestReviewableDate() : localToday();
+  var from = isoShift(to, -6);
+  var obl = obligationsIn(from, to);
+  if (!obl.length) { toast('Nothing was assigned in that period.', true); return; }
+
+  var have = {};
+  _tasks.forEach(function (t) { have[t.obs_date + '|' + t.robot + '|' + (t.reviewer_id || '')] = true; });
+  var fresh = obl.filter(function (o) { return !have[o.date + '|' + o.robot + '|' + o.userId]; });
+
+  if (!fresh.length) { toast('The board is already up to date for ' + plainDate(from) + '\u2013' + plainDate(to)); return; }
+  if (!confirm('Add ' + fresh.length + ' review' + (fresh.length === 1 ? '' : 's') + ' to the board?\n\n' +
+               plainDate(from) + ' \u2013 ' + plainDate(to) +
+               '\n\nThey start as Pending. Rows already on the board keep their current status.')) return;
+
+  var btn = document.getElementById('trk-generate');
+  setBusy(btn, true);
+  try {
+    const { error } = await sb.from('review_tasks').insert(fresh.map(function (o) {
+      return { obs_date: o.date, robot: o.robot, reviewer_id: o.userId, status: 'pending' };
+    }));
+    if (error) throw error;
+    await loadTasks();
+    toast(fresh.length + ' review' + (fresh.length === 1 ? '' : 's') + ' added');
+  } catch (e) {
+    toast('Could not create them: ' + (e && e.message ? e.message : 'unknown error'), true);
+  } finally { setBusy(btn, false); }
+}
+
+// CSV of exactly what is on screen, filters and sort included.
+function exportTrackerCSV() {
+  var rows = trkFiltered();
+  if (!rows.length) { toast('Nothing to export in this view.', true); return; }
+  var cell = function (v) {
+    var t = String(v == null ? '' : v);
+    // A leading =, +, - or @ makes a spreadsheet treat text as a formula.
+    if (/^[=+\-@]/.test(t)) t = "'" + t;
+    return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  var head = ['Date', 'HBA reviewer', 'Bot', 'Status', 'Completed', 'Last updated', 'Notes'];
+  var body = rows.map(function (t) {
+    return [t.obs_date, teamName(t.reviewer_id) || 'Unassigned', t.robot,
+            TRK_STATUS[t.status].label, t.status === 'completed' ? 'Yes' : 'No',
+            (t.updated_at || '').replace('T', ' ').slice(0, 16), t.notes || ''].map(cell).join(',');
+  });
+  var csv = head.map(cell).join(',') + '\n' + body.join('\n');
+
+  var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'progress-tracker-' + localToday() + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  toast(rows.length + ' row' + (rows.length === 1 ? '' : 's') + ' exported');
 }
 
 // ---------- Supabase data layer (shared team log) ----------
@@ -3079,13 +3740,13 @@ function renderRecent() {
 }
 
 function showPage(name) {
-  var pages = ['dashboard', 'reporting', 'users', 'performance', 'settings', 'observations'];
+  var pages = ['dashboard', 'reporting', 'users', 'performance', 'settings', 'observations', 'tracker'];
   pages.forEach(function (pg) {
     var el = document.getElementById('page-' + pg);
     if (el) el.style.display = (pg === name) ? 'block' : 'none';
   });
   var activeTab = (name === 'observations') ? 'logs' : name;
-  ['dashboard', 'logs', 'reporting', 'users', 'performance', 'settings'].forEach(function (t) {
+  ['dashboard', 'logs', 'tracker', 'reporting', 'users', 'performance', 'settings'].forEach(function (t) {
     var tab = document.getElementById('tab-' + t);
     if (tab) tab.classList.toggle('fb-tab-active', t === activeTab);
   });
@@ -3099,6 +3760,10 @@ window.addEventListener('resize', function () {
 });
 document.getElementById('tab-dashboard').addEventListener('click', () => showPage('dashboard'));
 document.getElementById('tab-logs').addEventListener('click', () => showPage('observations'));
+document.getElementById('tab-tracker').addEventListener('click', function () {
+  showPage('tracker');
+  renderTracker();
+});
 document.getElementById('tab-reporting').addEventListener('click', () => showPage('reporting'));
 document.getElementById('tab-users').addEventListener('click', function () {
   showPage('users');
@@ -3113,6 +3778,50 @@ document.getElementById('tab-users').addEventListener('click', function () {
   if (se) se.addEventListener('change', renderAssignments);
   var bw = document.getElementById('ops-backlog-window');
   if (bw) bw.addEventListener('change', renderOpsBacklog);
+
+  // ---- progress tracker ----
+  ['trk-from', 'trk-to', 'trk-f-reviewer', 'trk-f-robot', 'trk-f-status', 'trk-search']
+    .forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('change', renderTracker);
+      el.addEventListener('input', renderTracker);
+    });
+
+  var clr = document.getElementById('trk-clear');
+  if (clr) clr.addEventListener('click', function () {
+    ['trk-from', 'trk-to', 'trk-f-reviewer', 'trk-f-robot', 'trk-f-status', 'trk-search']
+      .forEach(function (id) { var el = document.getElementById(id); if (el) el.value = ''; });
+    renderTracker();
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.trk-sort'), function (th) {
+    th.addEventListener('click', function () {
+      var k = th.dataset.sort;
+      // Same column flips direction; a new column starts descending for
+      // dates and ascending for names, which is what people expect.
+      if (_trkSort.key === k) _trkSort.dir = -_trkSort.dir;
+      else _trkSort = { key: k, dir: (k === 'date' || k === 'updated') ? -1 : 1 };
+      renderTracker();
+    });
+  });
+
+  var addT = document.getElementById('trk-add-toggle');
+  if (addT) addT.addEventListener('click', function () {
+    var box = document.getElementById('trk-add');
+    if (!box) return;
+    var open = box.style.display !== 'none';
+    box.style.display = open ? 'none' : 'block';
+    addT.textContent = open ? 'Add review' : 'Close';
+  });
+  var save = document.getElementById('trk-n-save');
+  if (save) save.addEventListener('click', addTask);
+  var gen = document.getElementById('trk-generate');
+  if (gen) gen.addEventListener('click', generateTasks);
+  var exp = document.getElementById('trk-export');
+  if (exp) exp.addEventListener('click', exportTrackerCSV);
+  var grain = document.getElementById('trk-trend-grain');
+  if (grain) grain.addEventListener('change', function () { renderTrkTrend(trkFiltered()); });
 })();
 document.getElementById('tab-performance').addEventListener('click', function () {
   showPage('performance');
@@ -5192,7 +5901,7 @@ function runIntro() {
       if (playIntro) { playIntro = false; intro = runIntro(); overlay.style.display = 'none'; }
       var loadP = loadEntries();
       if (intro) { await Promise.all([intro.done, loadP]); } else { await loadP; }
-      appReady = true; showApp(); applyRoleUI(); loadTeam(); loadAssignments(); loadOptions(); loadReportHistory(); loadAuditLog();
+      appReady = true; showApp(); applyRoleUI(); loadTeam(); loadAssignments(); loadTasks(); loadOptions(); loadReportHistory(); loadAuditLog();
       if (currentRole === 'admin') loadUsers();
       if (intro) await intro.dismiss();
       maybeOfferMigration();
@@ -5210,7 +5919,10 @@ function runIntro() {
   }
 
   async function onSession(session) {
-    if (!session) { appReady = false; showLogin(); return; }
+    if (!session) { appReady = false; window.__sessionUserId = null; showLogin(); return; }
+    // The signed-in user's real id. The tracker needs it to tell a reviewer's
+    // own task from everyone else's, and a display name cannot do that.
+    window.__sessionUserId = session.user.id;
     if (await mustChangePassword(session.user.id)) { showChange(); return; }
     await enterApp();
   }

@@ -10,7 +10,8 @@
     reports: '__mock_reports',
     audit: '__mock_audit',
     options: '__mock_options',
-    assignments: '__mock_assignments'
+    assignments: '__mock_assignments',
+    review_tasks: '__mock_tasks'
   };
 
   const read = k => { try { return JSON.parse(LS.getItem(k) || '[]'); } catch (e) { return []; } };
@@ -89,16 +90,32 @@
         const rows = read(key);
         if (b.op === 'insert') {
           const list = Array.isArray(b.payload) ? b.payload : [b.payload];
-          const made = list.map(p => Object.assign({
-            id: uuid(),
-            created_at: new Date().toISOString(),
-            created_by: (window.__mockSession && window.__mockSession.user.id) || null
-          }, p));
+          const now = new Date().toISOString();
+          const made = list.map(p => {
+            const row = Object.assign({
+              id: uuid(), created_at: now,
+              created_by: (window.__mockSession && window.__mockSession.user.id) || null
+            }, p);
+            // The real table has a trigger keeping these in step.
+            if (b.table === 'review_tasks') {
+              row.updated_at = now;
+              row.completed_at = row.status === 'completed' ? now : null;
+            }
+            return row;
+          });
           write(key, rows.concat(made));
           return resolve({ data: made, error: null });
         }
         if (b.op === 'update') {
-          rows.forEach(r => { if (matches(r, b.filters)) Object.assign(r, b.payload); });
+          const now = new Date().toISOString();
+          rows.forEach(r => {
+            if (!matches(r, b.filters)) return;
+            Object.assign(r, b.payload);
+            if (b.table === 'review_tasks') {
+              r.updated_at = now;
+              r.completed_at = r.status === 'completed' ? (r.completed_at || now) : null;
+            }
+          });
           write(key, rows);
           return resolve({ data: null, error: null });
         }
