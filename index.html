@@ -690,8 +690,8 @@ html, body {
   <div class="fb-card" id="card-assign">
     <div style="font-size:15px; font-weight:500; margin-bottom:4px;">Assignments</div>
     <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">
-      Who is responsible for which robot. This is what coverage is measured against &mdash;
-      without it, every number is just &ldquo;more is better&rdquo;.
+      Say who is responsible for each robot. Everything on the User Performance tab is
+      measured against this &mdash; until it is filled in, there is nothing to measure.
     </div>
 
     <div id="assign-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px; align-items:end;">
@@ -775,19 +775,20 @@ html, body {
 
     <div class="fb-card" id="card-team-ops" style="margin-bottom:1.5rem;">
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;">
-        <div style="font-size:15px; font-weight:500; margin-right:auto;">Team coverage</div>
+        <div style="font-size:15px; font-weight:500; margin-right:auto;">Review progress</div>
         <span id="ops-asof" style="font-size:12px; color:var(--text-muted);"></span>
       </div>
-      <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">
-        Of the bot-days assigned to the team, how many were actually checked. A date counts as
-        checked whether something was found or &ldquo;no data&rdquo; was logged &mdash; both mean someone looked.
+      <div id="ops-headline" style="font-size:13.5px; color:var(--text-primary); margin-bottom:5px;"></div>
+      <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+        Each robot needs reviewing once a day by whoever is responsible for it. Logging
+        &ldquo;no data&rdquo; still counts as reviewed &mdash; it means they looked and nothing had arrived.
       </div>
       <div id="ops-windows" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:12px;"></div>
 
       <div style="display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:14px; margin-top:16px;" id="ops-split">
         <div>
           <div style="display:flex; align-items:center; gap:9px; margin-bottom:9px;">
-            <div style="font-size:13px; font-weight:600;">Backlog</div>
+            <div style="font-size:13px; font-weight:600;">Still to review</div>
             <span id="ops-backlog-count" style="font-size:12px; color:var(--text-muted);"></span>
             <span style="flex:1;"></span>
             <select id="ops-backlog-window" style="width:auto; font-size:11.5px; padding:3px 24px 3px 8px;">
@@ -799,13 +800,13 @@ html, body {
           <div id="ops-backlog" style="display:flex; flex-direction:column; gap:5px; max-height:296px; overflow:auto;"></div>
         </div>
         <div>
-          <div style="font-size:13px; font-weight:600; margin-bottom:9px;">By member &middot; this week</div>
+          <div style="font-size:13px; font-weight:600; margin-bottom:9px;">Each person &middot; this week</div>
           <div id="ops-rail" style="display:flex; flex-direction:column; gap:9px;"></div>
         </div>
       </div>
 
       <div style="margin-top:18px;">
-        <div style="font-size:13px; font-weight:600; margin-bottom:7px;">Coverage per week</div>
+        <div style="font-size:13px; font-weight:600; margin-bottom:7px;">Week by week</div>
         <div id="ops-trend"></div>
       </div>
     </div>
@@ -1853,25 +1854,76 @@ function covColor(pct) {
   return pct >= 90 ? 'var(--fb-green)' : pct >= 70 ? '#d9a93f' : 'var(--text-danger)';
 }
 
+// "Oct 29" reads faster than "2026-10-29" for someone scanning a list.
+var OPS_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function plainDate(iso) {
+  if (!iso) return '';
+  return OPS_MONTHS[parseInt(iso.slice(5, 7), 10) - 1] + ' ' + parseInt(iso.slice(8, 10), 10);
+}
+
+// Say the lag as a sentence. "Turnaround 3d" is a term you have to be taught;
+// "usually reviewed 3 days later" is not.
+function plainLag(days) {
+  if (days === null || days === undefined) return '';
+  if (days === 0) return 'Usually reviewed the same day';
+  if (days === 1) return 'Usually reviewed the next day';
+  return 'Usually reviewed ' + days + ' days later';
+}
+
+function plainWait(days) {
+  if (days === 0) return 'from today';
+  if (days === 1) return 'waiting 1 day';
+  return 'waiting ' + days + ' days';
+}
+
+// The one sentence a manager reads. Everything under it is detail.
+function renderOpsHeadline() {
+  var el = document.getElementById('ops-headline');
+  if (!el) return;
+  var wk = weekRange(localToday());
+  var c = coverageFor(wk.from, wk.to);
+
+  if (!_assignLoaded || !_assignments.length) {
+    el.innerHTML = '<span style="color:var(--text-secondary);">' +
+      'Nobody is responsible for a robot yet, so there is nothing to measure. ' +
+      'Set that up under User Management.</span>';
+    return;
+  }
+  if (!c.assigned) {
+    el.innerHTML = '<span style="color:var(--text-secondary);">No robots needed reviewing this week.</span>';
+    return;
+  }
+
+  var waiting = c.assigned - c.checked;
+  var oldest = c.backlog.length ? c.backlog[0].date : null;
+  el.innerHTML =
+    'This week <b style="color:' + covColor(c.coverage) + ';">' + c.checked + ' of ' + c.assigned +
+      '</b> review' + (c.assigned === 1 ? '' : 's') + ' ' + (c.checked === 1 ? 'is' : 'are') + ' done.' +
+    (waiting
+      ? ' <b style="color:' + covColor(c.coverage) + ';">' + waiting + '</b> still waiting' +
+        (oldest ? ', the oldest from <b>' + esc(plainDate(oldest)) + '</b>.' : '.')
+      : ' <span style="color:var(--fb-green);">Nothing is waiting.</span>');
+}
+
 function opsTile(label, sub, c) {
   var pct = c.coverage;
   // No assignment means no obligation. Showing 0% there would invent a
   // failure out of an empty roster.
   var head = (pct === null)
     ? '<div style="font-size:26px; font-weight:600; color:var(--text-muted);">\u2014</div>' +
-      '<div style="font-size:11.5px; color:var(--text-muted);">nothing assigned</div>'
+      '<div style="font-size:11.5px; color:var(--text-muted);">nothing to review</div>'
     : '<div style="font-size:26px; font-weight:600; color:' + covColor(pct) + ';">' + pct + '%</div>' +
       '<div style="font-size:11.5px; color:var(--text-secondary);">' +
-        c.checked + ' of ' + c.assigned + ' bot-day' + (c.assigned === 1 ? '' : 's') + ' checked</div>';
+        c.checked + ' of ' + c.assigned + ' review' + (c.assigned === 1 ? '' : 's') + ' done</div>';
 
+  var lag = plainLag(c.turnaround);
   return '<div style="background:var(--surface-1); border:1px solid var(--border); border-radius:11px; padding:11px 13px;">' +
     '<div style="font-size:11px; letter-spacing:0.03em; color:var(--text-muted); margin-bottom:2px;">' +
       esc(label) + ' <span style="color:var(--text-muted);">\u00b7 ' + esc(sub) + '</span></div>' +
     head +
-    '<div style="display:flex; gap:14px; margin-top:9px; font-size:11.5px; color:var(--text-secondary);">' +
-      '<span>Turnaround <b style="color:var(--text-primary);">' +
-        (c.turnaround === null ? '\u2014' : c.turnaround + 'd') + '</b></span>' +
-      '<span>Logged <b style="color:var(--text-primary);">' + c.logged + '</b></span>' +
+    '<div style="margin-top:9px; font-size:11.5px; color:var(--text-secondary);">' +
+      (lag ? esc(lag) + '<br>' : '') +
+      c.logged + ' observation' + (c.logged === 1 ? '' : 's') + ' logged' +
     '</div></div>';
 }
 
@@ -1897,15 +1949,17 @@ function renderOpsBacklog() {
   var c = coverageFor(isoShift(today, -(days - 1)), today);
   var bl = c.backlog;
 
-  if (countEl) countEl.textContent = bl.length ? bl.length + ' unchecked' : '';
+  if (countEl) countEl.textContent = bl.length
+    ? bl.length + ' review' + (bl.length === 1 ? '' : 's') + ' waiting' : '';
 
   if (!_assignLoaded || !_assignments.length) {
     host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">' +
-      'Assign robots to your team first \u2014 the backlog is the list of assigned days nobody has checked.</div>';
+      'Say who is responsible for each robot first, under User Management. ' +
+      'This then lists the days nobody has reviewed yet.</div>';
     return;
   }
   if (!bl.length) {
-    host.innerHTML = '<div style="font-size:12.5px; color:var(--fb-green);">Nothing outstanding in the last ' + days + ' days.</div>';
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--fb-green);">Everything in the last ' + days + ' days has been reviewed.</div>';
     return;
   }
 
@@ -1916,10 +1970,10 @@ function renderOpsBacklog() {
       'style="text-align:left; display:flex; align-items:center; gap:9px; padding:7px 10px; width:100%; font-size:12.5px; ' +
       'background:var(--surface-1); border:1px solid var(--border); border-left:3px solid ' + col + '; border-radius:8px;">' +
       '<span style="font-weight:600; min-width:80px;">' + esc(o.robot) + '</span>' +
-      '<span style="color:var(--text-muted); min-width:92px;">' + esc(o.date) + '</span>' +
+      '<span style="color:var(--text-muted); min-width:74px;">' + esc(plainDate(o.date)) + '</span>' +
       '<span style="color:var(--text-secondary);">' + esc(teamName(o.userId) || '\u2014') + '</span>' +
       '<span style="flex:1;"></span>' +
-      '<span style="color:' + col + '; font-size:11.5px;">' + (age === 0 ? 'today' : age + 'd old') + '</span>' +
+      '<span style="color:' + col + '; font-size:11.5px;">' + esc(plainWait(age)) + '</span>' +
       '</button>';
   }).join('');
 
@@ -1938,7 +1992,7 @@ function renderOpsRail() {
   var c = coverageFor(wk.from, wk.to);
 
   if (!c.rows.length || !c.assigned) {
-    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">No assignments this week.</div>';
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">Nobody had a robot to review this week.</div>';
     return;
   }
 
@@ -1949,14 +2003,14 @@ function renderOpsRail() {
     // The denominator is always on screen: "3/5" is actionable, "60%" alone
     // hides whether that is three days or thirty.
     var extra = [];
-    if (r.coveredByOther) extra.push(r.coveredByOther + ' by someone else');
-    if (r.turnaround !== null) extra.push(r.turnaround + 'd turnaround');
+    if (r.coveredByOther) extra.push(r.coveredByOther + ' done by a teammate');
+    if (r.turnaround !== null) extra.push(plainLag(r.turnaround).replace('Usually reviewed', 'usually'));
     return '<div>' +
       '<div style="display:flex; align-items:baseline; gap:7px; font-size:12.5px;">' +
         '<span style="color:var(--text-muted); width:13px;">' + (i + 1) + '</span>' +
         '<span style="font-weight:600;">' + esc(r.username) + '</span>' +
         '<span style="flex:1;"></span>' +
-        '<span style="color:var(--text-secondary);">' + r.done + '/' + r.assigned + '</span>' +
+        '<span style="color:var(--text-secondary);">' + r.done + ' of ' + r.assigned + '</span>' +
         '<span style="color:' + col + '; font-weight:600; min-width:38px; text-align:right;">' +
           (pct === null ? '\u2014' : pct + '%') + '</span>' +
       '</div>' +
@@ -1982,7 +2036,7 @@ function renderOpsTrend() {
   }
   if (!weeks.some(function (w) { return w.assigned; })) {
     host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">' +
-      'A trend appears once robots have been assigned for a few weeks.</div>';
+      'This fills in once people have been responsible for robots for a few weeks.</div>';
     return;
   }
 
@@ -1991,8 +2045,8 @@ function renderOpsTrend() {
     'background:var(--surface-0); border:1px solid var(--border); border-radius:9px; padding:9px 10px 6px;">' +
     weeks.map(function (w) {
       var none = (w.coverage === null);
-      var title = w.from + ' \u2014 ' + (none ? 'nothing assigned'
-                   : w.coverage + '% of ' + w.assigned + ' bot-day' + (w.assigned === 1 ? '' : 's'));
+      var title = 'Week of ' + plainDate(w.from) + ' \u2014 ' + (none ? 'nothing to review'
+                   : w.coverage + '%, ' + w.assigned + ' review' + (w.assigned === 1 ? '' : 's') + ' needed');
       // A week with nothing assigned gets a faint baseline stub rather than
       // empty space, so a short history reads as "not yet" and not as a
       // chart that failed to draw.
@@ -2004,11 +2058,12 @@ function renderOpsTrend() {
         'justify-content:flex-end; height:100%; min-width:0;">' + bar + '</div>';
     }).join('') + '</div>' +
     '<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--text-muted); margin-top:4px;">' +
-      '<span>' + esc(weeks[0].from) + '</span><span>this week</span></div>';
+      '<span>' + esc(plainDate(weeks[0].from)) + '</span><span>this week</span></div>';
 }
 
 function renderTeamOps() {
   if (!document.getElementById('card-team-ops')) return;
+  renderOpsHeadline();
   renderOpsWindows();
   renderOpsBacklog();
   renderOpsRail();

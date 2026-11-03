@@ -32,12 +32,12 @@ with sync_playwright() as pw:
     chk("three_windows", pg.eval_on_selector_all("#ops-windows > div", "e => e.length") == 3)
     txt = pg.inner_text("#ops-windows")
     chk("windows_labelled", all(w in txt for w in ("TODAY", "THIS WEEK", "THIS MONTH")))
-    chk("denominator_shown", "bot-days checked" in txt, "| never a bare percentage")
-    chk("turnaround_shown", "Turnaround" in txt)
+    chk("denominator_shown", "reviews done" in txt, "| never a bare percentage")
+    chk("lag_in_plain_words", "Usually reviewed" in txt, "| not \"Turnaround 0d\"")
 
     chk("rail_has_members", pg.eval_on_selector_all("#ops-rail > div", "e => e.length") == 2)
     rail = pg.inner_text("#ops-rail")
-    chk("rail_shows_fraction", "/" in rail, "| %s" % rail.replace("\n", " ")[:80])
+    chk("rail_shows_fraction", " of " in rail, "| %s" % rail.replace("\n", " ")[:80])
     chk("rail_worst_first", pg.evaluate("""() => {
         const v = [...document.querySelectorAll('#ops-rail > div')]
           .map(d => parseInt((d.innerText.match(/(\\d+)%/) || [0, 999])[1], 10));
@@ -74,9 +74,29 @@ with sync_playwright() as pw:
     pg2.goto(url); H.seed(pg2, observations=obs, assignments=[]); H.login(pg2)
     pg2.click("#tab-performance"); pg2.wait_for_timeout(1200)
     t2 = pg2.inner_text("#ops-windows")
-    chk("no_assignments_not_zero", "nothing assigned" in t2 and "0%" not in t2, "| %s" % t2.replace("\n", " ")[:70])
-    chk("backlog_explains_setup", "Assign robots" in pg2.inner_text("#ops-backlog"))
-    chk("trend_explains_setup", "once robots have been assigned" in pg2.inner_text("#ops-trend"))
+    chk("no_assignments_not_zero", "nothing to review" in t2 and "0%" not in t2, "| %s" % t2.replace("\n", " ")[:70])
+    chk("backlog_explains_setup", "who is responsible" in pg2.inner_text("#ops-backlog"))
+    chk("trend_explains_setup", "responsible for robots" in pg2.inner_text("#ops-trend"))
+
+    # Plain language: nothing on this card should need explaining.
+    card = pg.inner_text("#card-team-ops")
+    JARGON = ["bot-day", "Turnaround", "coverage", "Coverage", "unchecked", "backlog"]
+    found = [j for j in JARGON if j in card]
+    chk("no_jargon_on_card", not found, "| found %s" % found)
+
+    head = pg.inner_text("#ops-headline")
+    chk("headline_is_a_sentence", "review" in head and "done" in head,
+        "| %s" % head)
+    chk("headline_names_oldest", ("waiting" in head) or ("Nothing is waiting" in head))
+    chk("dates_are_readable",
+        pg.evaluate("() => plainDate('2026-10-29')") == "Oct 29")
+    chk("lag_sentences", pg.evaluate("""() => [plainLag(0), plainLag(1), plainLag(4)]""")
+        == ["Usually reviewed the same day", "Usually reviewed the next day",
+            "Usually reviewed 4 days later"])
+    chk("wait_sentences", pg.evaluate("""() => [plainWait(0), plainWait(1), plainWait(5)]""")
+        == ["from today", "waiting 1 day", "waiting 5 days"])
+
+    pg.locator("#card-team-ops").screenshot(path="/tmp/claude-0/ops_plain.png")
 
     chk("no_js_errors", not errs, "|" + str(errs[:3]))
     br.close()
