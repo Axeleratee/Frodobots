@@ -772,6 +772,44 @@ html, body {
   <div style="display:flex; flex-direction:column; gap:1.5rem;">
 
   <div id="perf-overview">
+
+    <div class="fb-card" id="card-team-ops" style="margin-bottom:1.5rem;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;">
+        <div style="font-size:15px; font-weight:500; margin-right:auto;">Team coverage</div>
+        <span id="ops-asof" style="font-size:12px; color:var(--text-muted);"></span>
+      </div>
+      <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">
+        Of the bot-days assigned to the team, how many were actually checked. A date counts as
+        checked whether something was found or &ldquo;no data&rdquo; was logged &mdash; both mean someone looked.
+      </div>
+      <div id="ops-windows" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:12px;"></div>
+
+      <div style="display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:14px; margin-top:16px;" id="ops-split">
+        <div>
+          <div style="display:flex; align-items:center; gap:9px; margin-bottom:9px;">
+            <div style="font-size:13px; font-weight:600;">Backlog</div>
+            <span id="ops-backlog-count" style="font-size:12px; color:var(--text-muted);"></span>
+            <span style="flex:1;"></span>
+            <select id="ops-backlog-window" style="width:auto; font-size:11.5px; padding:3px 24px 3px 8px;">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+          </div>
+          <div id="ops-backlog" style="display:flex; flex-direction:column; gap:5px; max-height:296px; overflow:auto;"></div>
+        </div>
+        <div>
+          <div style="font-size:13px; font-weight:600; margin-bottom:9px;">By member &middot; this week</div>
+          <div id="ops-rail" style="display:flex; flex-direction:column; gap:9px;"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <div style="font-size:13px; font-weight:600; margin-bottom:7px;">Coverage per week</div>
+        <div id="ops-trend"></div>
+      </div>
+    </div>
+
     <div class="fb-card">
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;">
         <div style="font-size:15px; font-weight:500; margin-right:auto;">User performance</div>
@@ -1611,6 +1649,7 @@ async function addAssignment() {
     const { error } = await sb.from('assignments').insert({ user_id: uid, robot: robot, starts_on: start });
     if (error) throw error;
     await loadAssignments();
+    renderTeamOps();
     toast(robot + ' assigned to ' + teamName(uid));
   } catch (e) {
     assignStatus('Could not assign: ' + (e && e.message ? e.message : 'unknown error'), true);
@@ -1647,6 +1686,333 @@ async function deleteAssignment(id) {
     await loadAssignments();
     toast('Assignment deleted');
   } catch (e) { assignStatus('Could not delete: ' + (e && e.message ? e.message : 'unknown error'), true); }
+}
+
+/* =====================================================================
+   COVERAGE ENGINE
+
+   The unit of obligation is one (person, robot, date) - "did you check
+   your bot that day?". It is deliberately NOT a count of observations:
+   how much footage lands on a given day is decided upstream by the
+   teleop team, so scoring volume would score something the reviewer
+   does not control. Checking is something they do control.
+
+   A date counts as checked whether the reviewer found something or
+   explicitly logged "no data" - both mean they looked. Only a date with
+   nothing logged at all is a miss.
+   ===================================================================== */
+
+function isoShift(dateISO, days) {
+  var d = new Date(dateISO + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return hmISO(d);
+}
+
+// Monday-start week containing dateISO, and the calendar month around it.
+function weekRange(dateISO) {
+  var d = new Date(dateISO + 'T00:00:00');
+  var dow = (d.getDay() + 6) % 7;            // 0 = Monday
+  var from = isoShift(dateISO, -dow);
+  return { from: from, to: isoShift(from, 6) };
+}
+function monthRange(dateISO) {
+  var from = dateISO.slice(0, 8) + '01';
+  var d = new Date(from + 'T00:00:00');
+  d.setMonth(d.getMonth() + 1); d.setDate(0);
+  return { from: from, to: hmISO(d) };
+}
+
+// Every (person, robot, date) that was someone's responsibility in the range.
+// Never past today: work that is not yet due is not a miss.
+function obligationsIn(from, to) {
+  var today = localToday();
+  var end = to > today ? today : to;
+  var out = [];
+  if (!from || !end || from > end) return out;
+  _assignments.forEach(function (a) {
+    var start = a.starts_on > from ? a.starts_on : from;
+    var stop = a.ends_on && a.ends_on < end ? a.ends_on : end;
+    for (var d = start; d <= stop; d = isoShift(d, 1)) {
+      out.push({ userId: a.user_id, robot: a.robot, date: d });
+    }
+  });
+  return out;
+}
+
+// robot|date -> { byUser: {uid:true}, any: true }
+function checkedIndex(rows) {
+  var ix = {};
+  (rows || entries).forEach(function (e) {
+    if (!e.robot || !e.date) return;
+    var k = e.robot + '|' + e.date;
+    var c = ix[k] || (ix[k] = { byUser: {}, any: false });
+    c.any = true;
+    if (e._by) c.byUser[e._by] = true;
+  });
+  return ix;
+}
+
+// Days between the observation date and the day it was actually written.
+// Volume-independent: it catches the reviewer who does everything, a week
+// late. Median, not mean, so one holiday backlog does not define a person.
+function turnaroundDays(e) {
+  if (!e || !e._at || !e.date) return null;
+  var logged = String(e._at).slice(0, 10);
+  var n = daysBetween(e.date, logged);
+  return (n === null || isNaN(n) || n < 0) ? null : n;
+}
+function median(nums) {
+  if (!nums.length) return null;
+  var a = nums.slice().sort(function (x, y) { return x - y; });
+  var m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2);
+}
+
+/* Coverage for one date range.
+   done            - assigned bot-days this person checked themselves
+   coveredByOther  - assigned to them, but a teammate checked it. The data is
+                     not missing, so it must not be counted as a gap; it is
+                     still not their own work, so it is not counted as theirs.
+   missed          - nobody checked it. This is the only real failure. */
+function coverageFor(from, to) {
+  var obligations = obligationsIn(from, to);
+  var ix = checkedIndex();
+  var per = {}, backlog = [];
+
+  function slot(uid) {
+    return per[uid] || (per[uid] = {
+      userId: uid, username: teamName(uid) || 'unknown',
+      assigned: 0, done: 0, coveredByOther: 0, missed: 0,
+      logged: 0, turnarounds: []
+    });
+  }
+  _team.forEach(function (u) {
+    if (u.role === 'admin' || u.role === 'editor') slot(u.id);
+  });
+
+  obligations.forEach(function (o) {
+    var b = slot(o.userId);
+    b.assigned++;
+    var c = ix[o.robot + '|' + o.date];
+    if (c && c.byUser[o.userId]) b.done++;
+    else if (c && c.any) b.coveredByOther++;
+    else { b.missed++; backlog.push(o); }
+  });
+
+  // Volume and turnaround come from what they actually logged in the range.
+  entries.forEach(function (e) {
+    if (!e._by || !e.date || e.date < from || e.date > to) return;
+    var b = per[e._by]; if (!b) return;
+    b.logged++;
+    var t = turnaroundDays(e);
+    if (t !== null) b.turnarounds.push(t);
+  });
+
+  var rows = Object.keys(per).map(function (uid) {
+    var b = per[uid];
+    b.coverage = b.assigned ? Math.round((b.done / b.assigned) * 100) : null;
+    b.turnaround = median(b.turnarounds);
+    return b;
+  }).sort(function (x, y) {
+    // Worst coverage first: a dashboard should open on what needs attention.
+    if (x.coverage === null) return 1;
+    if (y.coverage === null) return -1;
+    if (x.coverage !== y.coverage) return x.coverage - y.coverage;
+    return x.username.localeCompare(y.username);
+  });
+
+  var assigned = obligations.length;
+  var checked = obligations.filter(function (o) {
+    var c = ix[o.robot + '|' + o.date]; return c && c.any;
+  }).length;
+
+  backlog.sort(function (a, b) {
+    return a.date.localeCompare(b.date) || a.robot.localeCompare(b.robot);
+  });
+
+  return {
+    from: from, to: to,
+    assigned: assigned,
+    checked: checked,
+    coverage: assigned ? Math.round((checked / assigned) * 100) : null,
+    logged: entries.filter(function (e) { return e.date >= from && e.date <= to; }).length,
+    turnaround: median(entries
+      .filter(function (e) { return e.date >= from && e.date <= to; })
+      .map(turnaroundDays).filter(function (t) { return t !== null; })),
+    rows: rows,
+    backlog: backlog
+  };
+}
+
+/* ---------- Team coverage dashboard ---------- */
+
+// Three steps, not a gradient: a percentage people act on wants a verdict,
+// and these are the same thresholds the Coverage card already uses.
+function covColor(pct) {
+  if (pct === null || pct === undefined) return 'var(--text-muted)';
+  return pct >= 90 ? 'var(--fb-green)' : pct >= 70 ? '#d9a93f' : 'var(--text-danger)';
+}
+
+function opsTile(label, sub, c) {
+  var pct = c.coverage;
+  // No assignment means no obligation. Showing 0% there would invent a
+  // failure out of an empty roster.
+  var head = (pct === null)
+    ? '<div style="font-size:26px; font-weight:600; color:var(--text-muted);">\u2014</div>' +
+      '<div style="font-size:11.5px; color:var(--text-muted);">nothing assigned</div>'
+    : '<div style="font-size:26px; font-weight:600; color:' + covColor(pct) + ';">' + pct + '%</div>' +
+      '<div style="font-size:11.5px; color:var(--text-secondary);">' +
+        c.checked + ' of ' + c.assigned + ' bot-day' + (c.assigned === 1 ? '' : 's') + ' checked</div>';
+
+  return '<div style="background:var(--surface-1); border:1px solid var(--border); border-radius:11px; padding:11px 13px;">' +
+    '<div style="font-size:11px; letter-spacing:0.03em; color:var(--text-muted); margin-bottom:2px;">' +
+      esc(label) + ' <span style="color:var(--text-muted);">\u00b7 ' + esc(sub) + '</span></div>' +
+    head +
+    '<div style="display:flex; gap:14px; margin-top:9px; font-size:11.5px; color:var(--text-secondary);">' +
+      '<span>Turnaround <b style="color:var(--text-primary);">' +
+        (c.turnaround === null ? '\u2014' : c.turnaround + 'd') + '</b></span>' +
+      '<span>Logged <b style="color:var(--text-primary);">' + c.logged + '</b></span>' +
+    '</div></div>';
+}
+
+function renderOpsWindows() {
+  var host = document.getElementById('ops-windows');
+  if (!host) return;
+  var today = localToday();
+  var wk = weekRange(today), mo = monthRange(today);
+  host.innerHTML =
+    opsTile('TODAY', today, coverageFor(today, today)) +
+    opsTile('THIS WEEK', wk.from.slice(5) + ' \u2013 ' + wk.to.slice(5), coverageFor(wk.from, wk.to)) +
+    opsTile('THIS MONTH', mo.from.slice(0, 7), coverageFor(mo.from, mo.to));
+  var asof = document.getElementById('ops-asof');
+  if (asof) asof.textContent = 'as of ' + today;
+}
+
+function renderOpsBacklog() {
+  var host = document.getElementById('ops-backlog');
+  var countEl = document.getElementById('ops-backlog-count');
+  if (!host) return;
+  var days = parseInt((document.getElementById('ops-backlog-window') || {}).value || '30', 10);
+  var today = localToday();
+  var c = coverageFor(isoShift(today, -(days - 1)), today);
+  var bl = c.backlog;
+
+  if (countEl) countEl.textContent = bl.length ? bl.length + ' unchecked' : '';
+
+  if (!_assignLoaded || !_assignments.length) {
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">' +
+      'Assign robots to your team first \u2014 the backlog is the list of assigned days nobody has checked.</div>';
+    return;
+  }
+  if (!bl.length) {
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--fb-green);">Nothing outstanding in the last ' + days + ' days.</div>';
+    return;
+  }
+
+  host.innerHTML = bl.map(function (o) {
+    var age = daysBetween(o.date, today);
+    var col = age >= 7 ? 'var(--text-danger)' : age >= 3 ? '#d9a93f' : 'var(--text-secondary)';
+    return '<button type="button" class="ops-bl" data-date="' + escAttr(o.date) + '" data-bot="' + escAttr(o.robot) + '" ' +
+      'style="text-align:left; display:flex; align-items:center; gap:9px; padding:7px 10px; width:100%; font-size:12.5px; ' +
+      'background:var(--surface-1); border:1px solid var(--border); border-left:3px solid ' + col + '; border-radius:8px;">' +
+      '<span style="font-weight:600; min-width:80px;">' + esc(o.robot) + '</span>' +
+      '<span style="color:var(--text-muted); min-width:92px;">' + esc(o.date) + '</span>' +
+      '<span style="color:var(--text-secondary);">' + esc(teamName(o.userId) || '\u2014') + '</span>' +
+      '<span style="flex:1;"></span>' +
+      '<span style="color:' + col + '; font-size:11.5px;">' + (age === 0 ? 'today' : age + 'd old') + '</span>' +
+      '</button>';
+  }).join('');
+
+  Array.prototype.forEach.call(host.querySelectorAll('.ops-bl'), function (b) {
+    b.addEventListener('click', function () {
+      showPage('observations');
+      focusLogsOnDate(b.dataset.date, b.dataset.bot);
+    });
+  });
+}
+
+function renderOpsRail() {
+  var host = document.getElementById('ops-rail');
+  if (!host) return;
+  var wk = weekRange(localToday());
+  var c = coverageFor(wk.from, wk.to);
+
+  if (!c.rows.length || !c.assigned) {
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">No assignments this week.</div>';
+    return;
+  }
+
+  host.innerHTML = c.rows.map(function (r, i) {
+    var pct = r.coverage;
+    var col = covColor(pct);
+    var w = pct === null ? 0 : pct;
+    // The denominator is always on screen: "3/5" is actionable, "60%" alone
+    // hides whether that is three days or thirty.
+    var extra = [];
+    if (r.coveredByOther) extra.push(r.coveredByOther + ' by someone else');
+    if (r.turnaround !== null) extra.push(r.turnaround + 'd turnaround');
+    return '<div>' +
+      '<div style="display:flex; align-items:baseline; gap:7px; font-size:12.5px;">' +
+        '<span style="color:var(--text-muted); width:13px;">' + (i + 1) + '</span>' +
+        '<span style="font-weight:600;">' + esc(r.username) + '</span>' +
+        '<span style="flex:1;"></span>' +
+        '<span style="color:var(--text-secondary);">' + r.done + '/' + r.assigned + '</span>' +
+        '<span style="color:' + col + '; font-weight:600; min-width:38px; text-align:right;">' +
+          (pct === null ? '\u2014' : pct + '%') + '</span>' +
+      '</div>' +
+      '<div style="height:5px; border-radius:3px; background:var(--surface-0); margin:4px 0 0 20px; overflow:hidden;">' +
+        '<div style="height:100%; width:' + w + '%; background:' + col + '; border-radius:3px; ' +
+        'transition:width var(--dur-page) var(--ease);"></div></div>' +
+      (extra.length ? '<div style="font-size:11px; color:var(--text-muted); margin:3px 0 0 20px;">' +
+        esc(extra.join(' \u00b7 ')) + '</div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+function renderOpsTrend() {
+  var host = document.getElementById('ops-trend');
+  if (!host) return;
+  var today = localToday();
+  var weeks = [];
+  for (var i = 11; i >= 0; i--) {
+    var ref = isoShift(today, -i * 7);
+    var r = weekRange(ref);
+    var c = coverageFor(r.from, r.to > today ? today : r.to);
+    weeks.push({ from: r.from, coverage: c.coverage, assigned: c.assigned });
+  }
+  if (!weeks.some(function (w) { return w.assigned; })) {
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">' +
+      'A trend appears once robots have been assigned for a few weeks.</div>';
+    return;
+  }
+
+  var W = 100 / weeks.length;
+  host.innerHTML = '<div style="display:flex; align-items:flex-end; gap:3px; height:104px; ' +
+    'background:var(--surface-0); border:1px solid var(--border); border-radius:9px; padding:9px 10px 6px;">' +
+    weeks.map(function (w) {
+      var none = (w.coverage === null);
+      var title = w.from + ' \u2014 ' + (none ? 'nothing assigned'
+                   : w.coverage + '% of ' + w.assigned + ' bot-day' + (w.assigned === 1 ? '' : 's'));
+      // A week with nothing assigned gets a faint baseline stub rather than
+      // empty space, so a short history reads as "not yet" and not as a
+      // chart that failed to draw.
+      var bar = none
+        ? '<div style="height:3px; border-radius:2px; background:var(--border-strong);"></div>'
+        : '<div style="height:' + Math.max(3, w.coverage) + '%; border-radius:3px 3px 0 0; background:' +
+          covColor(w.coverage) + ';"></div>';
+      return '<div title="' + escAttr(title) + '" style="flex:1; display:flex; flex-direction:column; ' +
+        'justify-content:flex-end; height:100%; min-width:0;">' + bar + '</div>';
+    }).join('') + '</div>' +
+    '<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--text-muted); margin-top:4px;">' +
+      '<span>' + esc(weeks[0].from) + '</span><span>this week</span></div>';
+}
+
+function renderTeamOps() {
+  if (!document.getElementById('card-team-ops')) return;
+  renderOpsWindows();
+  renderOpsBacklog();
+  renderOpsRail();
+  renderOpsTrend();
 }
 
 // ---------- Supabase data layer (shared team log) ----------
@@ -2655,10 +3021,13 @@ document.getElementById('tab-users').addEventListener('click', function () {
   if (add) add.addEventListener('click', addAssignment);
   var se = document.getElementById('assign-show-ended');
   if (se) se.addEventListener('change', renderAssignments);
+  var bw = document.getElementById('ops-backlog-window');
+  if (bw) bw.addEventListener('change', renderOpsBacklog);
 })();
 document.getElementById('tab-performance').addEventListener('click', function () {
   showPage('performance');
   showPerfOverview();
+  renderTeamOps();
   loadPerformance();
 });
 document.getElementById('tab-settings').addEventListener('click', () => showPage('settings'));
