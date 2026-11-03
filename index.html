@@ -914,6 +914,7 @@ html, body {
         <div style="font-size:15px; font-weight:500; margin-right:auto;">Review progress</div>
         <span id="ops-asof" style="font-size:12px; color:var(--text-muted);"></span>
       </div>
+      <div id="ops-setup" style="display:none; margin-bottom:11px;"></div>
       <div id="ops-headline" style="font-size:13.5px; color:var(--text-primary); margin-bottom:5px;"></div>
       <div id="ops-note" style="font-size:12px; color:var(--text-muted); margin-bottom:14px;"></div>
       <div id="ops-windows" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:12px;"></div>
@@ -2029,6 +2030,56 @@ function plainWait(days) {
 }
 
 // The one sentence a manager reads. Everything under it is detail.
+// Which bots were actually worked on in this period but belong to nobody?
+// Their observations cannot count towards coverage, and if that is most of
+// the team's work the percentage below is measuring a sliver of it.
+function unassignedWork(from, to) {
+  var worked = {};
+  entries.forEach(function (e) {
+    if (!e.robot || !e.date || e.date < from || e.date > to) return;
+    worked[e.robot] = (worked[e.robot] || 0) + 1;
+  });
+  var covered = {};
+  _assignments.forEach(function (a) {
+    if (a.starts_on > to) return;
+    if (a.ends_on && a.ends_on < from) return;
+    covered[a.robot] = true;
+  });
+  var loose = Object.keys(worked).filter(function (r) { return !covered[r]; });
+  return {
+    bots: loose.sort(),
+    observations: loose.reduce(function (n, r) { return n + worked[r]; }, 0),
+    totalBots: Object.keys(worked).length,
+    assignedBots: Object.keys(worked).filter(function (r) { return covered[r]; }).length
+  };
+}
+
+// Say plainly when a low percentage is a gap in the SETUP rather than in the
+// work. A dashboard that shows alarming red for an unfinished configuration
+// teaches people to distrust it.
+function renderOpsSetup() {
+  var el = document.getElementById('ops-setup');
+  if (!el) return;
+  var newest = latestReviewableDate();
+  var u = unassignedWork(isoShift(newest, -29), newest);
+
+  if (!_assignLoaded || !u.observations) { el.style.display = 'none'; el.innerHTML = ''; return; }
+
+  var names = u.bots.slice(0, 6).map(esc).join(', ') + (u.bots.length > 6 ? ' and ' + (u.bots.length - 6) + ' more' : '');
+  el.style.display = 'block';
+  el.innerHTML =
+    '<div style="font-size:12.5px; padding:10px 12px; border-radius:9px; ' +
+    'background:rgba(217,169,63,0.08); border:1px solid rgba(217,169,63,0.28);">' +
+      '<b style="color:#d9a93f;">The percentages below only cover ' + u.assignedBots +
+      ' of ' + u.totalBots + ' bot' + (u.totalBots === 1 ? '' : 's') + ' your team worked on.</b> ' +
+      '<span style="color:var(--text-secondary);">' +
+        u.observations + ' observation' + (u.observations === 1 ? '' : 's') +
+        ' in the last 30 days were logged for bots nobody is responsible for (' + names + '), ' +
+        'so they are not counted here. Give each one an owner under User Management ' +
+        '&rarr; Assignments and these numbers will reflect the real work.' +
+      '</span></div>';
+}
+
 function renderOpsNote() {
   var el = document.getElementById('ops-note');
   if (!el) return;
@@ -2166,7 +2217,16 @@ function renderOpsRail() {
     return;
   }
 
-  host.innerHTML = c.rows.map(function (r, i) {
+  // People with nothing assigned are not at 0% - they have no obligation at
+  // all. Listing them as blank rows makes the whole team look idle.
+  var active = c.rows.filter(function (r) { return r.assigned > 0; });
+  var idle = c.rows.length - active.length;
+  if (!active.length) {
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">Nobody had a robot to review in this period.</div>';
+    return;
+  }
+
+  host.innerHTML = active.map(function (r, i) {
     var pct = r.coverage;
     var col = covColor(pct);
     var w = pct === null ? 0 : pct;
@@ -2190,7 +2250,9 @@ function renderOpsRail() {
       (extra.length ? '<div style="font-size:11px; color:var(--text-muted); margin:3px 0 0 20px;">' +
         esc(extra.join(' \u00b7 ')) + '</div>' : '') +
       '</div>';
-  }).join('');
+  }).join('') +
+  (idle ? '<div style="font-size:11px; color:var(--text-muted); padding-top:3px;">' +
+    idle + ' other' + (idle === 1 ? ' has' : 's have') + ' no robot assigned.</div>' : '');
 }
 
 function renderOpsTrend() {
@@ -2235,6 +2297,7 @@ function renderOpsTrend() {
 function renderTeamOps() {
   if (!document.getElementById('card-team-ops')) return;
   renderOpsNote();
+  renderOpsSetup();
   renderOpsHeadline();
   renderOpsWindows();
   renderOpsBacklog();
