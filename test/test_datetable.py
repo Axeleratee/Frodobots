@@ -56,8 +56,11 @@ with sync_playwright() as pw:
 
     # ---- the case that proves they are separate ----
     r3 = row(D[3], "Alpha")
-    chk("completed_review_of_missing_data", "Completed" in r3 and "Missing" in r3,
-        "| reviewer looked, nothing had arrived, review is done: %s" % r3)
+    # The reviewer looked, nothing had arrived, and they finished the review.
+    # Upload says "No data" (checked, none arrived), NOT "Not logged".
+    chk("completed_review_of_empty_day", "Completed" in r3 and "No data" in r3,
+        "| %s" % r3)
+    chk("checked_day_is_not_called_unlogged", "Not logged" not in r3)
 
     # ---- no record invented ----
     r6 = row(D[6], "Alpha")
@@ -67,7 +70,7 @@ with sync_playwright() as pw:
     # ---- cards come from the rows, not from mock numbers ----
     cards = pg.inner_text("#dates-cards")
     for word in ("ASSIGNED", "COMPLETED", "IN PROGRESS", "PENDING",
-                 "LATE UPLOADS", "MISSING DATA", "COMPLETION"):
+                 "LATE UPLOADS", "NO DATA", "NOT LOGGED", "COMPLETION"):
         chk("card_" + word.split()[0].lower(), word in cards)
     n_late = pg.evaluate("() => dtCounts(dtRows()).late")
     shown_late = pg.eval_on_selector_all("#dt-body tr", """els => els.filter(

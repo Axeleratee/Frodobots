@@ -1114,7 +1114,8 @@ html, body {
             <option value="">All uploads</option>
             <option value="ontime">On time</option>
             <option value="late">Late</option>
-            <option value="missing">Missing</option>
+            <option value="nodata">No data (checked)</option>
+            <option value="missing">Not logged</option>
           </select>
         </div>
         <div>
@@ -3295,12 +3296,21 @@ function focusLogsOnDate(dateISO, bot) {
    other. A reviewer can finish a review of a day where nothing arrived.
    ===================================================================== */
 
+// Four states, not three. "The reviewer looked and nothing had arrived" and
+// "nobody has looked at all" are completely different situations: the first
+// is finished work, the second is a gap. Collapsing them into one red badge
+// made a team that had done its job look like it had failed.
 const UPLOAD_STATUS = {
-  ontime:  { label: 'On time', color: 'var(--fb-green)',    bg: 'rgba(95,224,160,0.12)',  border: 'rgba(95,224,160,0.30)' },
-  late:    { label: 'Late',    color: '#d9a93f',            bg: 'rgba(217,169,63,0.12)',  border: 'rgba(217,169,63,0.32)' },
-  missing: { label: 'Missing', color: 'var(--text-danger)', bg: 'rgba(255,111,111,0.10)', border: 'rgba(255,111,111,0.28)' }
+  ontime:  { label: 'On time',   color: 'var(--fb-green)',     bg: 'rgba(95,224,160,0.12)',  border: 'rgba(95,224,160,0.30)',
+             hint: 'Footage arrived and was logged on time.' },
+  late:    { label: 'Late',      color: '#d9a93f',             bg: 'rgba(217,169,63,0.12)',  border: 'rgba(217,169,63,0.32)',
+             hint: 'Footage arrived after the expected date.' },
+  nodata:  { label: 'No data',   color: 'var(--text-secondary)', bg: 'rgba(158,176,196,0.10)', border: 'rgba(158,176,196,0.22)',
+             hint: 'The reviewer checked and nothing had arrived. Their work here is done - this is an upload gap, not a review gap.' },
+  missing: { label: 'Not logged', color: 'var(--text-danger)', bg: 'rgba(255,111,111,0.10)', border: 'rgba(255,111,111,0.28)',
+             hint: 'Nobody has logged anything for this bot on this date.' }
 };
-const UPLOAD_ORDER = { missing: 0, late: 1, ontime: 2 };
+const UPLOAD_ORDER = { missing: 0, nodata: 1, late: 2, ontime: 3 };
 const REVIEW_ORDER = { untracked: 0, pending: 1, in_progress: 2, completed: 3 };
 
 function botDayRows(from, to) {
@@ -3349,11 +3359,11 @@ function botDayRows(from, to) {
   });
 
   rows.forEach(function (r) {
-    // "Missing" means nothing usable arrived. An entry logged as "no data"
-    // is the reviewer reporting exactly that, so it is still missing data -
-    // but their review of it can perfectly well be complete.
     var real = r.obsCount - r.noDataCount;
-    r.uploadStatus = real === 0 ? 'missing' : (r.lateCount ? 'late' : 'ontime');
+    r.uploadStatus =
+      real > 0        ? (r.lateCount ? 'late' : 'ontime') :  // footage arrived
+      r.noDataCount   ? 'nodata'                          :  // checked, nothing there
+                        'missing';                           // nobody looked
   });
 
   return rows;
@@ -3363,7 +3373,8 @@ var _datesView = 'table';
 var _dtSort = { key: 'date', dir: -1 };
 
 function badge(m, label) {
-  return '<span style="font-size:11px; padding:2px 9px; border-radius:20px; white-space:nowrap; color:' +
+  return '<span' + (m.hint ? ' title="' + escAttr(m.hint) + '"' : '') +
+    ' style="font-size:11px; padding:2px 9px; border-radius:20px; white-space:nowrap; color:' +
     m.color + '; background:' + m.bg + '; border:1px solid ' + m.border + ';">' + esc(label || m.label) + '</span>';
 }
 function reviewBadge(status) {
@@ -3417,12 +3428,11 @@ function dtRows() {
 function dtCounts(rows) {
   var c = {
     total: rows.length, completed: 0, in_progress: 0, pending: 0, untracked: 0,
-    late: 0, missing: 0
+    late: 0, nodata: 0, missing: 0, ontime: 0
   };
   rows.forEach(function (r) {
     c[r.reviewStatus]++;
-    if (r.uploadStatus === 'late') c.late++;
-    if (r.uploadStatus === 'missing') c.missing++;
+    c[r.uploadStatus]++;
   });
   // Only tracked rows can have a completion rate: an untracked bot-day is
   // not an unfinished review, it is a review nobody has created yet.
@@ -3449,7 +3459,8 @@ function renderDtCards(rows) {
     tile('IN PROGRESS', c.in_progress, TRK_STATUS.in_progress.color) +
     tile('PENDING', c.pending, TRK_STATUS.pending.color) +
     tile('LATE UPLOADS', c.late, UPLOAD_STATUS.late.color) +
-    tile('MISSING DATA', c.missing, UPLOAD_STATUS.missing.color) +
+    tile('NO DATA', c.nodata, UPLOAD_STATUS.nodata.color, 'checked, none arrived') +
+    tile('NOT LOGGED', c.missing, UPLOAD_STATUS.missing.color, 'nobody looked yet') +
     tile('COMPLETION', c.rate === null ? '\u2014' : c.rate + '%',
          c.rate === null ? 'var(--text-muted)' : covColor(c.rate),
          c.untracked ? c.untracked + ' not tracked yet' : (c.tracked ? c.completed + ' of ' + c.tracked : ''));
