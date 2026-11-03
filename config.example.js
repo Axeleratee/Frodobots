@@ -12,5 +12,9 @@ window.APP_CONFIG = {
   REVIEW_DELAY_DAYS: 2,
 
   // Days of the week with no shift (0 = Sunday). [] if you work every day.
-  REST_DAYS: [0]
+  REST_DAYS: [0],
+
+  // true: saving an observation finishes that bot-day's review (with an
+  // opt-out tick). false: the reviewer marks it done themselves.
+  AUTO_COMPLETE_ON_LOG: true
 };

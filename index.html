@@ -551,10 +551,10 @@ html, body {
         <input type="checkbox" id="f-late" style="width:auto; margin:0;">
         Late upload <span style="color:var(--text-muted); font-size:12px;">(the footage arrived after the expected date)</span>
       </label>
-      <label style="font-size:13px; display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:7px;">
+      <label id="f-done-row" style="font-size:13px; display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:7px;">
         <input type="checkbox" id="f-done" style="width:auto; margin:0;">
-        I am finished reviewing this bot for this date
-        <span style="color:var(--text-muted); font-size:12px;">(marks it done on the Progress Tracker)</span>
+        <span id="f-done-label"></span>
+        <span id="f-done-note" style="color:var(--text-muted); font-size:12px;"></span>
       </label>
     </div>
     <div id="f-detail-fields">
@@ -1304,6 +1304,12 @@ const REVIEW_DELAY_DAYS = Math.max(0, parseInt(APP_CONFIG.REVIEW_DELAY_DAYS, 10)
 // Days with no shift. Nobody owes a review on these, so they must never be
 // counted as a gap - a day the team was never expected to work is not a
 // missed day, and a permanent red square would train people to ignore red.
+// When the team logs one entry per bot-day, saving it IS finishing it, and
+// asking for a second click every time only produces a board full of
+// Pending rows that are actually done. The opt-out tick covers the team
+// that splits a bot-day across several entries.
+const AUTO_COMPLETE_ON_LOG = APP_CONFIG.AUTO_COMPLETE_ON_LOG !== false;
+
 const REST_DAYS = Array.isArray(APP_CONFIG.REST_DAYS)
   ? APP_CONFIG.REST_DAYS.map(Number).filter(function (n) { return n >= 0 && n <= 6; })
   : [];
@@ -4531,6 +4537,21 @@ function renderDupNotice() {
   });
 }
 
+// The tick means different things in the two modes, so it is labelled from
+// the setting rather than hard-coded in the markup.
+function applyDoneMode() {
+  var label = document.getElementById('f-done-label');
+  var note = document.getElementById('f-done-note');
+  if (!label || !note) return;
+  if (AUTO_COMPLETE_ON_LOG) {
+    label.textContent = 'I am not finished with this bot and date yet';
+    note.textContent = '(leave unticked and saving marks the review done)';
+  } else {
+    label.textContent = 'I am finished reviewing this bot for this date';
+    note.textContent = '(marks it done on the Progress Tracker)';
+  }
+}
+
 function resetForm() {
   taskMS.clear();
   issueMS.clear();
@@ -4540,6 +4561,7 @@ function resetForm() {
   document.getElementById('f-nodata').checked = false;
   document.getElementById('f-late').checked = false;
   document.getElementById('f-done').checked = false;
+  applyDoneMode();
   document.getElementById('f-detail-fields').style.display = 'block';
   document.getElementById('f-robot-other').style.display = 'none';
   document.getElementById('f-robot-other').value = '';
@@ -4570,6 +4592,11 @@ function startEdit(id) {
   }
 
   document.getElementById('f-late').checked = !!e.lateUpload;
+  // Editing an old entry should not re-close a review the reviewer may have
+  // deliberately reopened, so start from "keep it as it is".
+  var doneBox = document.getElementById('f-done');
+  if (doneBox) doneBox.checked = AUTO_COMPLETE_ON_LOG;
+  applyDoneMode();
   const nd = document.getElementById('f-nodata');
   nd.checked = !!e.noData || issueList(e).includes('nodata');
   document.getElementById('f-detail-fields').style.display = nd.checked ? 'none' : 'block';
@@ -4605,10 +4632,15 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   const robot = robotSel === '__other' ? document.getElementById('f-robot-other').value.trim() : robotSel;
   const noData = document.getElementById('f-nodata').checked;
   const lateUpload = document.getElementById('f-late').checked;
-  // "No data" is definitive: there is nothing to come back to, so logging it
-  // finishes the review for that bot-day on its own.
-  const markDone = document.getElementById('f-done').checked ||
-                   document.getElementById('f-nodata').checked;
+  // "No data" is definitive either way: the reviewer looked, nothing was
+  // there, and there is nothing to come back to.
+  const noDataChecked = document.getElementById('f-nodata').checked;
+  const tick = document.getElementById('f-done').checked;
+  // With auto-complete on, the tick means the OPPOSITE: keep this open.
+  // "No data" closes the day only when it is being LOGGED, never when an
+  // old entry is edited - somebody may have reopened that review on purpose.
+  const markDone = (!editingId && noDataChecked) ||
+    (AUTO_COMPLETE_ON_LOG ? !tick : tick);
   const task = noData ? [] : taskMS.getValues();
   let issue = noData ? ['nodata'] : issueMS.getValues();
   const severity = noData ? '' : document.getElementById('f-severity').value.trim();
@@ -4686,11 +4718,14 @@ document.getElementById('btn-save').addEventListener('click', async () => {
 
   toast((wasEditing ? 'Observation updated' : 'Observation saved') +
         ' \u00b7 ' + robot + ' \u00b7 ' + date +
-        (closed ? ' \u2014 review marked done' : ''));
+        (closed ? ' \u2014 review marked done'
+                : (AUTO_COMPLETE_ON_LOG && !noDataChecked ? ' \u2014 left open' : '')));
   flashRow(savedId);
 });
 
 // Keep the "already logged" strip in step with the date / robot pickers.
+applyDoneMode();
+
 ['f-date', 'f-robot', 'f-robot-other'].forEach(function (id) {
   var el = document.getElementById(id);
   if (!el) return;

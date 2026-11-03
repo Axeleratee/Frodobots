@@ -17,5 +17,12 @@ window.APP_CONFIG = {
   // Days of the week with no shift, so no review is expected and no gap is
   // reported. 0 = Sunday, 1 = Monday ... 6 = Saturday. Set to [] if the team
   // works every day.
-  REST_DAYS: [0]
+  REST_DAYS: [0],
+
+  // true  - saving an observation finishes that bot-day's review, and the
+  //         log form offers a "not finished yet" tick to keep it open.
+  // false - nothing is ever completed by logging; the reviewer marks it done
+  //         themselves. Use this if your team logs one bot-day across
+  //         several separate entries.
+  AUTO_COMPLETE_ON_LOG: true
 };

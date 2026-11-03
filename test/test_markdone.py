@@ -1,11 +1,13 @@
-"""Finishing a review where the work happens, not in another tab."""
+"""Manual mode: the reviewer marks a review done themselves.
+
+Pinned to AUTO_COMPLETE_ON_LOG=false; test_autocomplete covers the default."""
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from playwright.sync_api import sync_playwright
 import harness as H
 
 chk = H.Checks(); errs = []
-url = H.build("app_done.html")
+url = H.build("app_done.html", config={"AUTO_COMPLETE_ON_LOG": False})
 D = {n: H.days_ago(n) for n in range(0, 12)}
 asg = [H.assign("a1", H.ADMIN, "Alpha", D[9]), H.assign("a2", H.ADMIN, "Echo", D[9])]
 
