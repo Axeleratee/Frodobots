@@ -779,10 +779,7 @@ html, body {
         <span id="ops-asof" style="font-size:12px; color:var(--text-muted);"></span>
       </div>
       <div id="ops-headline" style="font-size:13.5px; color:var(--text-primary); margin-bottom:5px;"></div>
-      <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
-        Each robot needs reviewing once a day by whoever is responsible for it. Logging
-        &ldquo;no data&rdquo; still counts as reviewed &mdash; it means they looked and nothing had arrived.
-      </div>
+      <div id="ops-note" style="font-size:12px; color:var(--text-muted); margin-bottom:14px;"></div>
       <div id="ops-windows" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:12px;"></div>
 
       <div style="display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:14px; margin-top:16px;" id="ops-split">
@@ -800,7 +797,7 @@ html, body {
           <div id="ops-backlog" style="display:flex; flex-direction:column; gap:5px; max-height:296px; overflow:auto;"></div>
         </div>
         <div>
-          <div style="font-size:13px; font-weight:600; margin-bottom:9px;">Each person &middot; this week</div>
+          <div style="font-size:13px; font-weight:600; margin-bottom:9px;">Each person &middot; last 7 days</div>
           <div id="ops-rail" style="display:flex; flex-direction:column; gap:9px;"></div>
         </div>
       </div>
@@ -1069,6 +1066,12 @@ const SUPABASE_ANON_KEY = APP_CONFIG.SUPABASE_ANON_KEY || 'YOUR-PUBLISHABLE-OR-A
 //   <username>@LOGIN_EMAIL_DOMAIN
 // and that is the email you use when creating the user in Supabase.
 const LOGIN_EMAIL_DOMAIN = APP_CONFIG.LOGIN_EMAIL_DOMAIN || 'robotqa.local';
+
+// Raw footage lands, annotators work it the next day, and the cleaned result
+// reaches QA the day after. Review is therefore structurally behind by this
+// many days, and that lag belongs to the pipeline, not to the reviewer. A
+// date is not missing, and nobody is late, until the data has arrived.
+const REVIEW_DELAY_DAYS = Math.max(0, parseInt(APP_CONFIG.REVIEW_DELAY_DAYS, 10) || 0);
 // ===========================================================
 const sb = (window.supabase && SUPABASE_URL.indexOf('YOUR-PROJECT') === -1)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -1723,10 +1726,17 @@ function monthRange(dateISO) {
   return { from: from, to: hmISO(d) };
 }
 
+// When a given date's data can first be reviewed.
+function availableOn(dateISO) { return isoShift(dateISO, REVIEW_DELAY_DAYS); }
+
+// The newest date whose data has actually reached the team.
+function latestReviewableDate() { return isoShift(localToday(), -REVIEW_DELAY_DAYS); }
+
 // Every (person, robot, date) that was someone's responsibility in the range.
-// Never past today: work that is not yet due is not a miss.
+// Stops at the newest date whose data has arrived: work that cannot be done
+// yet is not a gap, and flagging it would be a false alarm.
 function obligationsIn(from, to) {
-  var today = localToday();
+  var today = latestReviewableDate();
   var end = to > today ? today : to;
   var out = [];
   if (!from || !end || from > end) return out;
@@ -1759,8 +1769,13 @@ function checkedIndex(rows) {
 function turnaroundDays(e) {
   if (!e || !e._at || !e.date) return null;
   var logged = String(e._at).slice(0, 10);
-  var n = daysBetween(e.date, logged);
-  return (n === null || isNaN(n) || n < 0) ? null : n;
+  // Measured from the day the data ARRIVED, not the day it was recorded.
+  // With a two-day pipeline, reviewing two days on is the fastest anyone can
+  // go; counting from the observation date would score a perfect team as two
+  // days slow for something they do not control.
+  var n = daysBetween(availableOn(e.date), logged);
+  if (n === null || isNaN(n)) return null;
+  return n < 0 ? 0 : n;     // arrived early - credit it as same-day, never negative
 }
 function median(nums) {
   if (!nums.length) return null;
@@ -1877,11 +1892,24 @@ function plainWait(days) {
 }
 
 // The one sentence a manager reads. Everything under it is detail.
+function renderOpsNote() {
+  var el = document.getElementById('ops-note');
+  if (!el) return;
+  el.innerHTML = 'Each robot needs reviewing once a day by whoever is responsible for it. ' +
+    'Logging \u201cno data\u201d still counts as reviewed \u2014 it means they looked and nothing had arrived.' +
+    (REVIEW_DELAY_DAYS
+      ? ' Cleaned data reaches the team <b>' + REVIEW_DELAY_DAYS + ' day' +
+        (REVIEW_DELAY_DAYS === 1 ? '' : 's') + '</b> after the robot ran, so the last ' +
+        REVIEW_DELAY_DAYS + ' day' + (REVIEW_DELAY_DAYS === 1 ? ' is' : 's are') +
+        ' not counted yet \u2014 nothing can be late before it arrives.'
+      : '');
+}
+
 function renderOpsHeadline() {
   var el = document.getElementById('ops-headline');
   if (!el) return;
-  var wk = weekRange(localToday());
-  var c = coverageFor(wk.from, wk.to);
+  var newest = latestReviewableDate();
+  var c = coverageFor(isoShift(newest, -6), newest);
 
   if (!_assignLoaded || !_assignments.length) {
     el.innerHTML = '<span style="color:var(--text-secondary);">' +
@@ -1890,14 +1918,14 @@ function renderOpsHeadline() {
     return;
   }
   if (!c.assigned) {
-    el.innerHTML = '<span style="color:var(--text-secondary);">No robots needed reviewing this week.</span>';
+    el.innerHTML = '<span style="color:var(--text-secondary);">No robots needed reviewing in the last 7 days of data.</span>';
     return;
   }
 
   var waiting = c.assigned - c.checked;
   var oldest = c.backlog.length ? c.backlog[0].date : null;
   el.innerHTML =
-    'This week <b style="color:' + covColor(c.coverage) + ';">' + c.checked + ' of ' + c.assigned +
+    'In the last 7 days of data, <b style="color:' + covColor(c.coverage) + ';">' + c.checked + ' of ' + c.assigned +
       '</b> review' + (c.assigned === 1 ? '' : 's') + ' ' + (c.checked === 1 ? 'is' : 'are') + ' done.' +
     (waiting
       ? ' <b style="color:' + covColor(c.coverage) + ';">' + waiting + '</b> still waiting' +
@@ -1930,14 +1958,19 @@ function opsTile(label, sub, c) {
 function renderOpsWindows() {
   var host = document.getElementById('ops-windows');
   if (!host) return;
-  var today = localToday();
-  var wk = weekRange(today), mo = monthRange(today);
+  var newest = latestReviewableDate();
+  var w7 = isoShift(newest, -6), w30 = isoShift(newest, -29);
   host.innerHTML =
-    opsTile('TODAY', today, coverageFor(today, today)) +
-    opsTile('THIS WEEK', wk.from.slice(5) + ' \u2013 ' + wk.to.slice(5), coverageFor(wk.from, wk.to)) +
-    opsTile('THIS MONTH', mo.from.slice(0, 7), coverageFor(mo.from, mo.to));
+    opsTile(REVIEW_DELAY_DAYS ? 'NEWEST DAY IN' : 'TODAY', plainDate(newest),
+            coverageFor(newest, newest)) +
+    opsTile('LAST 7 DAYS', plainDate(w7) + ' \u2013 ' + plainDate(newest), coverageFor(w7, newest)) +
+    opsTile('LAST 30 DAYS', plainDate(w30) + ' \u2013 ' + plainDate(newest), coverageFor(w30, newest));
   var asof = document.getElementById('ops-asof');
-  if (asof) asof.textContent = 'as of ' + today;
+  if (asof) {
+    asof.textContent = REVIEW_DELAY_DAYS
+      ? 'data through ' + plainDate(newest)
+      : 'as of ' + plainDate(newest);
+  }
 }
 
 function renderOpsBacklog() {
@@ -1964,7 +1997,7 @@ function renderOpsBacklog() {
   }
 
   host.innerHTML = bl.map(function (o) {
-    var age = daysBetween(o.date, today);
+    var age = daysBetween(availableOn(o.date), today);
     var col = age >= 7 ? 'var(--text-danger)' : age >= 3 ? '#d9a93f' : 'var(--text-secondary)';
     return '<button type="button" class="ops-bl" data-date="' + escAttr(o.date) + '" data-bot="' + escAttr(o.robot) + '" ' +
       'style="text-align:left; display:flex; align-items:center; gap:9px; padding:7px 10px; width:100%; font-size:12.5px; ' +
@@ -1988,11 +2021,11 @@ function renderOpsBacklog() {
 function renderOpsRail() {
   var host = document.getElementById('ops-rail');
   if (!host) return;
-  var wk = weekRange(localToday());
-  var c = coverageFor(wk.from, wk.to);
+  var newest = latestReviewableDate();
+  var c = coverageFor(isoShift(newest, -6), newest);
 
   if (!c.rows.length || !c.assigned) {
-    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">Nobody had a robot to review this week.</div>';
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">Nobody had a robot to review in this period.</div>';
     return;
   }
 
@@ -2031,7 +2064,8 @@ function renderOpsTrend() {
   for (var i = 11; i >= 0; i--) {
     var ref = isoShift(today, -i * 7);
     var r = weekRange(ref);
-    var c = coverageFor(r.from, r.to > today ? today : r.to);
+    var newest = latestReviewableDate();
+    var c = coverageFor(r.from, r.to > newest ? newest : r.to);
     weeks.push({ from: r.from, coverage: c.coverage, assigned: c.assigned });
   }
   if (!weeks.some(function (w) { return w.assigned; })) {
@@ -2063,6 +2097,7 @@ function renderOpsTrend() {
 
 function renderTeamOps() {
   if (!document.getElementById('card-team-ops')) return;
+  renderOpsNote();
   renderOpsHeadline();
   renderOpsWindows();
   renderOpsBacklog();

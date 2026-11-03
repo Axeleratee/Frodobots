@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 import harness as H
 
 chk = H.Checks(); errs = []
-url = H.build()
+url = H.build("app_dash.html", config={"REVIEW_DELAY_DAYS": 0})
 D = {n: H.days_ago(n) for n in range(0, 40)}
 
 obs, asg = [], [
@@ -31,7 +31,7 @@ with sync_playwright() as pw:
     chk("card_visible", pg.is_visible("#card-team-ops"))
     chk("three_windows", pg.eval_on_selector_all("#ops-windows > div", "e => e.length") == 3)
     txt = pg.inner_text("#ops-windows")
-    chk("windows_labelled", all(w in txt for w in ("TODAY", "THIS WEEK", "THIS MONTH")))
+    chk("windows_labelled", all(w in txt for w in ("TODAY", "LAST 7 DAYS", "LAST 30 DAYS")))
     chk("denominator_shown", "reviews done" in txt, "| never a bare percentage")
     chk("lag_in_plain_words", "Usually reviewed" in txt, "| not \"Turnaround 0d\"")
 
@@ -85,7 +85,7 @@ with sync_playwright() as pw:
     chk("no_jargon_on_card", not found, "| found %s" % found)
 
     head = pg.inner_text("#ops-headline")
-    chk("headline_is_a_sentence", "review" in head and "done" in head,
+    chk("headline_is_a_sentence", "last 7 days of data" in head and "done" in head,
         "| %s" % head)
     chk("headline_names_oldest", ("waiting" in head) or ("Nothing is waiting" in head))
     chk("dates_are_readable",

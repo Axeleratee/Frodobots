@@ -21,8 +21,12 @@ PROFILES = {
 }
 
 
-def build(name="app.html"):
-    """Write a self-contained test page and return its file:// URL."""
+def build(name="app.html", config=None):
+    """Write a self-contained test page and return its file:// URL.
+
+    `config` overrides keys in window.APP_CONFIG, so a setting can be tested
+    the way a real deployment sets it rather than by poking at globals.
+    """
     BUILD.mkdir(parents=True, exist_ok=True)
     html = (ROOT / "index.html").read_text(encoding="utf-8")
     mock = (ROOT / "test" / "mock.js").read_text(encoding="utf-8")
@@ -32,6 +36,13 @@ def build(name="app.html"):
         r'<script src="https://cdn\.jsdelivr\.net/npm/@supabase[^"]*"></script>',
         "<script>" + mock.replace("\\", "\\\\") + "</script>", html, count=1)
     assert n == 1, "supabase CDN script tag not found - did index.html change?"
+
+    # Overrides go INSIDE the config script, not before </head>: the page has
+    # no </head>, and injecting earlier would touch window.APP_CONFIG before
+    # config.js has defined it.
+    if config:
+        import json
+        cfg += "\nObject.assign(window.APP_CONFIG, %s);" % json.dumps(config)
 
     html, n = re.subn(r'<script src="config\.js"></script>',
                       "<script>" + cfg + "</script>", html, count=1)

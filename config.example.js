@@ -5,5 +5,9 @@
 window.APP_CONFIG = {
   SUPABASE_URL: 'https://YOUR-PROJECT.supabase.co',
   SUPABASE_ANON_KEY: 'YOUR-PUBLISHABLE-OR-ANON-KEY',
-  LOGIN_EMAIL_DOMAIN: 'robotqa.local'
+  LOGIN_EMAIL_DOMAIN: 'robotqa.local',
+
+  // Days between an observation's date and the day it can actually be
+  // reviewed (0 if your team reviews same-day).
+  REVIEW_DELAY_DAYS: 2
 };

@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 import harness as H
 
 chk = H.Checks(); errs = []
-url = H.build()
+url = H.build("app_cov.html", config={"REVIEW_DELAY_DAYS": 0})
 
 D = {n: H.days_ago(n) for n in range(0, 12)}
 
