@@ -374,6 +374,70 @@ html, body {
 .fb-app *::-webkit-scrollbar-thumb:hover { background: rgba(158,176,196,0.30); background-clip: content-box; }
 .fb-app input:focus-visible, .fb-app select:focus-visible, .fb-app textarea:focus-visible { box-shadow: var(--ring); }
 .fb-app a { color: var(--accent); }
+/* ===== HBA Progress Overview ===== */
+/* Compact filter chips: a control that reads as one small object rather
+   than a labelled form field, so six of them fit on one line. */
+.fb-app .fchip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 11px;
+  font-size: 11.5px; color: var(--text-secondary);
+  transition: border-color var(--dur-micro) var(--ease), background var(--dur-micro) var(--ease);
+}
+.fb-app .fchip:hover, .fb-app .fchip:focus-within { border-color: var(--border-strong); }
+.fb-app .fchip svg { width: 13px; height: 13px; stroke: currentColor; flex-shrink: 0; }
+.fb-app .fchip select,
+.fb-app .fchip input {
+  all: unset;
+  font: inherit; color: var(--text-primary);
+  min-width: 0; max-width: 150px; cursor: pointer;
+}
+.fb-app .fchip input[type="text"] { cursor: text; width: 86px; }
+.fb-app .fchip input[type="date"] { width: 92px; color-scheme: dark; }
+.fb-app .fchip input::placeholder { color: var(--text-muted); }
+.fb-app .fchip select option { background: var(--surface-1); color: var(--text-primary); }
+.fb-app .fchip-sep { color: var(--text-muted); }
+.fb-app button.fchip-btn { cursor: pointer; color: var(--text-secondary); }
+.fb-app button.fchip-btn:hover { background: var(--surface-0); color: var(--text-primary); border-color: var(--border-strong); }
+
+/* Metric tiles: label and icon on one line, the number given room below. */
+.fb-app .mtile {
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 12px; padding: 13px 15px 15px;
+}
+.fb-app .mtile-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px; color: var(--text-secondary); margin-bottom: 9px;
+}
+.fb-app .mtile-head svg { width: 15px; height: 15px; stroke: var(--text-muted); flex-shrink: 0; }
+.fb-app .mtile-value { font-size: 27px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; }
+.fb-app .mtile-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+/* The main table: quiet rules, generous rows, a hover that helps the eye
+   track across six columns without turning into decoration. */
+.fb-app .ptable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.fb-app .ptable th {
+  text-align: left; font-weight: 500; font-size: 11px; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-muted);
+  padding: 0 10px 9px; border-bottom: 1px solid var(--border-strong);
+  position: sticky; top: 0; background: var(--surface-2); z-index: 1;
+}
+.fb-app .ptable th.dt-sort { cursor: pointer; }
+.fb-app .ptable th.dt-sort:hover { color: var(--text-secondary); }
+.fb-app .ptable td { padding: 10px; border-bottom: 1px solid var(--border); }
+.fb-app .ptable tbody tr { transition: background var(--dur-micro) var(--ease); cursor: pointer; }
+.fb-app .ptable tbody tr:hover { background: rgba(255,255,255,0.028); }
+.fb-app .ptable tbody tr:last-child td { border-bottom: none; }
+
+.fb-app .sbadge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 999px;
+  white-space: nowrap;
+}
+/* A quiet marker, not a badge: upload state is secondary to the review. */
+.fb-app .umark { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.fb-app .umark i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
 /* =====================================================================
    MOTION
    One orchestrated entrance (the boot sequence), and after that motion
@@ -1021,16 +1085,15 @@ html, body {
   <div id="page-observations" style="display:none;">
 
   <div class="fb-card" id="card-dates" style="margin-bottom:1.5rem;">
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;">
-      <div style="font-size:15px; font-weight:500; margin-right:auto;">Date overview</div>
-      <select id="dates-status" style="width:auto; min-width:150px; font-size:12.5px; padding:5px 26px 5px 9px;">
-        <option value="">All dates</option>
-        <option value="needs">Needs action</option>
-        <option value="late">Late upload</option>
-        <option value="nodata">No data</option>
-        <option value="reviewed">Fully reviewed</option>
+    <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:18px; flex-wrap:wrap;">
+      <div style="margin-right:auto;">
+        <div style="font-size:17px; font-weight:600; letter-spacing:-0.01em;">HBA Progress Overview</div>
+        <div style="font-size:12.5px; color:var(--text-secondary); margin-top:2px;">Monitor review progress and completion</div>
+      </div>
+      <select id="dates-status" style="display:none;">
+        <option value="" selected>All dates</option>
       </select>
-      <select id="dates-range" style="width:auto; min-width:130px; font-size:12.5px; padding:5px 26px 5px 9px;">
+      <select id="dates-range" style="width:auto; min-width:124px; font-size:11.5px; padding:5px 24px 5px 9px;">
         <option value="12">Last 12 weeks</option>
         <option value="26" selected>Last 26 weeks</option>
         <option value="52">Last 52 weeks</option>
@@ -1044,87 +1107,69 @@ html, body {
     </div>
     <div id="dates-summary" style="font-size:12.5px; color:var(--text-secondary); margin-bottom:12px;"></div>
 
-    <div id="dates-cards" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(132px,1fr)); gap:9px; margin-bottom:14px;"></div>
+    <div id="dates-cards" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:11px; margin-bottom:11px;"></div>
+    <div id="dates-secondary" style="display:flex; gap:18px; flex-wrap:wrap; font-size:11.5px; color:var(--text-muted); margin-bottom:16px;"></div>
 
     <div id="dates-table-wrap">
-      <div id="dates-tfilters" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px,1fr)); gap:9px; align-items:end; margin-bottom:11px;">
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">From</label>
-          <input type="date" id="dt-from" style="width:100%;">
-        </div>
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">To</label>
-          <input type="date" id="dt-to" style="width:100%;">
-        </div>
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">Reviewer</label>
-          <select id="dt-reviewer" style="width:100%;"></select>
-        </div>
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">Bot</label>
-          <select id="dt-robot" style="width:100%;"></select>
-        </div>
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">Review status</label>
-          <select id="dt-review" style="width:100%;">
-            <option value="">All reviews</option>
+      <div id="dates-tfilters" style="display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:14px;">
+        <span class="fchip">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <input type="date" id="dt-from" aria-label="From date">
+          <span class="fchip-sep">&rarr;</span>
+          <input type="date" id="dt-to" aria-label="To date">
+        </span>
+        <span class="fchip">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <select id="dt-reviewer" aria-label="Reviewer"></select>
+        </span>
+        <span class="fchip">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/></svg>
+          <select id="dt-robot" aria-label="Bot"></select>
+        </span>
+        <span class="fchip">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
+          <select id="dt-review" aria-label="Status">
+            <option value="">Status</option>
             <option value="done">Done</option>
             <option value="pending">Pending</option>
             <option value="untracked">Not assigned</option>
           </select>
-        </div>
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">Upload status</label>
-          <select id="dt-upload" style="width:100%;">
-            <option value="">All uploads</option>
+        </span>
+        <span class="fchip">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <select id="dt-upload" aria-label="Upload">
+            <option value="">Upload</option>
             <option value="ontime">On time</option>
             <option value="late">Late</option>
-            <option value="nodata">No data (checked)</option>
+            <option value="nodata">No data</option>
             <option value="missing">Not logged</option>
           </select>
-        </div>
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">Search</label>
-          <input type="text" id="dt-search" placeholder="bot or reviewer" style="width:100%;">
-        </div>
-        <div>
-          <button id="dt-clear" style="width:100%;">Clear</button>
-        </div>
-      </div>
-
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:9px; flex-wrap:wrap;">
-        <span id="dt-count" style="font-size:12.5px; color:var(--text-secondary);"></span>
+        </span>
+        <span class="fchip">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="dt-search" placeholder="Search" aria-label="Search">
+        </span>
+        <button id="dt-clear" class="fchip fchip-btn">Clear</button>
         <span style="flex:1;"></span>
-        <button id="dt-export" style="font-size:12px; padding:4px 11px;">Export CSV</button>
+        <span id="dt-count" style="font-size:11.5px; color:var(--text-muted);"></span>
+        <button id="dt-export" class="fchip fchip-btn">Export CSV</button>
       </div>
 
-      <div style="overflow-x:auto; max-height:520px; overflow-y:auto;">
-        <table style="width:100%; border-collapse:collapse; font-size:12.5px; min-width:700px;">
+      <div style="overflow-x:auto; max-height:540px; overflow-y:auto;">
+        <table class="ptable" style="min-width:560px;">
           <thead>
-            <tr style="border-bottom:1px solid var(--border-strong); text-align:left; color:var(--text-secondary);">
-              <th class="dt-sort" data-sort="date"     style="padding:7px 8px; cursor:pointer; white-space:nowrap; position:sticky; top:0; background:var(--surface-2);">Date</th>
-              <th class="dt-sort" data-sort="reviewer" style="padding:7px 8px; cursor:pointer; white-space:nowrap; position:sticky; top:0; background:var(--surface-2);">HBA reviewer</th>
-              <th class="dt-sort" data-sort="robot"    style="padding:7px 8px; cursor:pointer; white-space:nowrap; position:sticky; top:0; background:var(--surface-2);">Bot</th>
-              <th class="dt-sort" data-sort="review"   style="padding:7px 8px; cursor:pointer; white-space:nowrap; position:sticky; top:0; background:var(--surface-2);">Review</th>
-              <th class="dt-sort" data-sort="upload"   style="padding:7px 8px; cursor:pointer; white-space:nowrap; position:sticky; top:0; background:var(--surface-2);">Upload</th>
-              <th class="dt-sort" data-sort="updated"  style="padding:7px 8px; cursor:pointer; white-space:nowrap; position:sticky; top:0; background:var(--surface-2);">Last updated</th>
+            <tr>
+              <th class="dt-sort" data-sort="date">Date</th>
+              <th class="dt-sort" data-sort="reviewer">HBA Reviewer</th>
+              <th class="dt-sort" data-sort="robot">Bot</th>
+              <th class="dt-sort" data-sort="review">Status</th>
             </tr>
           </thead>
           <tbody id="dt-body"></tbody>
         </table>
       </div>
-      <div id="dt-empty" style="display:none; font-size:12.5px; color:var(--text-muted); padding:14px 2px;"></div>
+      <div id="dt-empty" style="display:none; font-size:12.5px; color:var(--text-muted); padding:18px 2px;"></div>
 
-      <div id="dates-breakdown" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:20px; margin-top:20px;">
-        <div>
-          <div style="font-size:13px; font-weight:600; margin-bottom:9px;">Each reviewer</div>
-          <div id="dt-by-reviewer" style="display:flex; flex-direction:column; gap:9px;"></div>
-        </div>
-        <div>
-          <div style="font-size:13px; font-weight:600; margin-bottom:9px;">Each bot</div>
-          <div id="dt-by-robot" style="display:flex; flex-direction:column; gap:9px;"></div>
-        </div>
-      </div>
     </div>
 
     <div id="dates-heatmap-wrap" style="display:none;">
@@ -2388,8 +2433,10 @@ function renderTeamOps() {
 var _trkSort = { key: 'date', dir: -1 };     // newest first
 
 const TRK_STATUS = {
-  pending: { label: 'Pending',      color: 'var(--text-danger)', bg: 'rgba(255,111,111,0.10)', border: 'rgba(255,111,111,0.28)' },
-  done:    { label: '\u2713 Done', color: 'var(--fb-green)',    bg: 'rgba(95,224,160,0.12)',  border: 'rgba(95,224,160,0.30)' }
+  // Pending is work still to do, not a failure, so it reads amber. Red is
+  // reserved for the one real gap: a bot-day nobody logged anything for.
+  pending: { label: 'Pending', color: '#e8a33d', bg: 'rgba(232,163,61,0.12)', border: 'rgba(232,163,61,0.32)' },
+  done:    { label: 'Done',    color: 'var(--fb-green)', bg: 'rgba(95,224,160,0.12)', border: 'rgba(95,224,160,0.30)' }
 };
 const TRK_ORDER = { pending: 0, done: 1 };
 
@@ -3213,14 +3260,6 @@ function badge(m, label) {
     ' style="font-size:11px; padding:2px 9px; border-radius:20px; white-space:nowrap; color:' +
     m.color + '; background:' + m.bg + '; border:1px solid ' + m.border + ';">' + esc(label || m.label) + '</span>';
 }
-function reviewBadge(status) {
-  if (status === 'untracked') {
-    return '<span title="Nobody is responsible for this bot on this date, so no review was expected. Set an owner under User Management." ' +
-      'style="font-size:11px; color:var(--text-muted);">Not assigned</span>';
-  }
-  return badge(TRK_STATUS[status] || TRK_STATUS.pending);
-}
-
 function dtFilters() {
   var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
   return {
@@ -3280,27 +3319,69 @@ function dtCounts(rows) {
   return c;
 }
 
+const MICON = {
+  assigned: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>',
+  done:     '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>',
+  pending:  '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  rate:     '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>'
+};
+
 function renderDtCards(rows) {
   var host = document.getElementById('dates-cards');
+  var secondary = document.getElementById('dates-secondary');
   if (!host) return;
   var c = dtCounts(rows);
-  var tile = function (label, value, color, sub) {
-    return '<div style="background:var(--surface-1); border:1px solid var(--border); border-radius:10px; padding:9px 11px;">' +
-      '<div style="font-size:10.5px; letter-spacing:0.03em; color:var(--text-muted);">' + esc(label) + '</div>' +
-      '<div style="font-size:20px; font-weight:600; color:' + color + ';">' + value + '</div>' +
-      (sub ? '<div style="font-size:10.5px; color:var(--text-muted);">' + esc(sub) + '</div>' : '') +
+
+  var tile = function (label, value, icon, color, sub) {
+    return '<div class="mtile">' +
+      '<div class="mtile-head"><span>' + esc(label) + '</span>' + icon + '</div>' +
+      '<div class="mtile-value"' + (color ? ' style="color:' + color + ';"' : '') + '>' + value + '</div>' +
+      (sub ? '<div class="mtile-sub">' + esc(sub) + '</div>' : '') +
       '</div>';
   };
+
   host.innerHTML =
-    tile('ASSIGNED', c.total, 'var(--text-primary)', 'bot-days in view') +
-    tile('DONE', c.done, TRK_STATUS.done.color) +
-    tile('PENDING', c.pending, TRK_STATUS.pending.color) +
-    tile('LATE UPLOADS', c.late, UPLOAD_STATUS.late.color) +
-    tile('NO DATA', c.nodata, UPLOAD_STATUS.nodata.color, 'checked, none arrived') +
-    tile('NOT LOGGED', c.missing, UPLOAD_STATUS.missing.color, 'nobody looked yet') +
-    tile('COMPLETION', c.rate === null ? '\u2014' : c.rate + '%',
+    tile('Assigned Reviews', c.total, MICON.assigned, '', 'in this view') +
+    tile('Completed', c.done, MICON.done, TRK_STATUS.done.color) +
+    tile('Pending', c.pending, MICON.pending, TRK_STATUS.pending.color) +
+    tile('Completion Rate', c.rate === null ? '\u2014' : c.rate + '%', MICON.rate,
          c.rate === null ? 'var(--text-muted)' : covColor(c.rate),
-         c.untracked ? c.untracked + ' not assigned' : (c.tracked ? c.done + ' of ' + c.tracked : ''));
+         c.tracked ? c.done + ' of ' + c.tracked + ' done' : 'nothing assigned yet');
+
+  // Upload health sits below the four headline numbers: a separate question
+  // from whether the review is finished, and never mixed into the rate.
+  if (secondary) {
+    var item = function (label, n, col) {
+      return '<span><i style="display:inline-block; width:6px; height:6px; border-radius:50%; ' +
+        'background:' + col + '; margin-right:6px;"></i>' + esc(label) +
+        ' <b style="color:var(--text-primary);">' + n + '</b></span>';
+    };
+    secondary.innerHTML =
+      item('Late uploads', c.late, UPLOAD_STATUS.late.color) +
+      item('Nothing arrived', c.nodata, UPLOAD_STATUS.nodata.color) +
+      item('Missing evaluations', c.missing, UPLOAD_STATUS.missing.color) +
+      (c.untracked ? item('Not assigned', c.untracked, 'var(--text-muted)') : '');
+  }
+}
+
+function statusBadge(status) {
+  if (status === 'untracked') {
+    return '<span class="umark" title="Nobody is responsible for this bot on this date, so no review was expected.">Not assigned</span>';
+  }
+  var m = TRK_STATUS[status] || TRK_STATUS.pending;
+  return '<span class="sbadge" style="color:' + m.color + '; background:' + m.bg +
+         '; border:1px solid ' + m.border + ';">' + esc(m.label) + '</span>';
+}
+
+// Upload state rides quietly beside the bot name. It is a different
+// question from "is the review done", and only worth the eye when it is
+// not the normal case.
+function uploadMark(st) {
+  if (st === 'ontime') return '';
+  var m = UPLOAD_STATUS[st];
+  if (!m) return '';
+  return ' <span class="umark" title="' + escAttr(m.hint || '') + '">' +
+    '<i style="background:' + m.color + ';"></i>' + esc(m.label) + '</span>';
 }
 
 function renderDtTable(rows) {
@@ -3309,12 +3390,13 @@ function renderDtTable(rows) {
   var count = document.getElementById('dt-count');
   if (!body) return;
 
-  if (count) count.textContent = rows.length ? rows.length + ' bot-day' + (rows.length === 1 ? '' : 's') + ' shown' : '';
+  if (count) count.textContent = rows.length ? rows.length + ' shown' : '';
 
   Array.prototype.forEach.call(document.querySelectorAll('.dt-sort'), function (th) {
     var on = th.dataset.sort === _dtSort.key;
-    th.style.color = on ? 'var(--text-primary)' : 'var(--text-secondary)';
-    th.textContent = th.textContent.replace(/\s*[\u2191\u2193]$/, '') + (on ? (_dtSort.dir > 0 ? ' \u2191' : ' \u2193') : '');
+    th.style.color = on ? 'var(--text-secondary)' : '';
+    th.textContent = th.textContent.replace(/\s*[\u2191\u2193]$/, '') +
+                     (on ? (_dtSort.dir > 0 ? ' \u2191' : ' \u2193') : '');
   });
 
   if (!rows.length) {
@@ -3322,25 +3404,20 @@ function renderDtTable(rows) {
     if (empty) {
       empty.style.display = 'block';
       empty.textContent = _assignments.length
-        ? 'Nothing matches these filters.'
-        : 'Nothing to show yet. Give each bot an owner under User Management \u2192 Assignments, and the days they are responsible for will appear here.';
+        ? 'No reviews match these filters.'
+        : 'Nothing to show yet. Give each bot an owner under User Management \u2192 Assignments, ' +
+          'and the days they are responsible for will appear here.';
     }
     return;
   }
   if (empty) empty.style.display = 'none';
 
   body.innerHTML = rows.map(function (r) {
-    var obs = r.obsCount
-      ? '<span style="color:var(--text-muted); font-size:10.5px;"> ' + r.obsCount + ' log' + (r.obsCount === 1 ? '' : 's') + '</span>'
-      : '';
-    return '<tr class="dt-row" data-date="' + escAttr(r.date) + '" data-bot="' + escAttr(r.robot) + '" ' +
-      'style="border-bottom:0.5px solid var(--border); cursor:pointer;">' +
-      '<td style="padding:7px 8px; white-space:nowrap;">' + esc(plainDate(r.date)) + '</td>' +
-      '<td style="padding:7px 8px;">' + esc(teamName(r.reviewerId) || '\u2014') + '</td>' +
-      '<td style="padding:7px 8px; font-weight:600;">' + esc(r.robot) + obs + '</td>' +
-      '<td style="padding:7px 8px;">' + reviewBadge(r.reviewStatus) + '</td>' +
-      '<td style="padding:7px 8px;">' + badge(UPLOAD_STATUS[r.uploadStatus]) + '</td>' +
-      '<td style="padding:7px 8px; color:var(--text-muted); white-space:nowrap;">' + esc(trkWhen(r.updatedAt)) + '</td>' +
+    return '<tr class="dt-row" data-date="' + escAttr(r.date) + '" data-bot="' + escAttr(r.robot) + '">' +
+      '<td style="white-space:nowrap; color:var(--text-secondary);">' + esc(plainDate(r.date)) + '</td>' +
+      '<td>' + esc(teamName(r.reviewerId) || '\u2014') + '</td>' +
+      '<td style="font-weight:600;">' + esc(r.robot) + uploadMark(r.uploadStatus) + '</td>' +
+      '<td>' + statusBadge(r.reviewStatus) + '</td>' +
       '</tr>';
   }).join('');
 
@@ -3349,60 +3426,18 @@ function renderDtTable(rows) {
   });
 }
 
-function renderDtBreakdown(rows) {
-  var byR = document.getElementById('dt-by-reviewer');
-  var byB = document.getElementById('dt-by-robot');
-  if (!byR || !byB) return;
-
-  function group(keyOf, nameOf) {
-    var m = {};
-    rows.forEach(function (r) { (m[keyOf(r)] = m[keyOf(r)] || []).push(r); });
-    return Object.keys(m).map(function (k) {
-      var c = dtCounts(m[k]);
-      return {
-        name: nameOf(k), untracked: c.untracked, size: c.total,
-        counts: { total: c.tracked, completed: c.completed, in_progress: c.in_progress,
-                  pending: c.pending, rate: c.rate }
-      };
-    }).sort(function (a, b) {
-      var ra = a.counts.rate === null ? 101 : a.counts.rate;
-      var rb = b.counts.rate === null ? 101 : b.counts.rate;
-      return ra !== rb ? ra - rb : a.name.localeCompare(b.name);
-    });
-  }
-  var empty = '<div style="font-size:12.5px; color:var(--text-muted);">Nothing to show for these filters.</div>';
-  var block = function (g) {
-    if (!g.counts.total) {
-      return '<div><div style="display:flex; align-items:baseline; gap:8px; font-size:12.5px;">' +
-        '<span style="font-weight:600;">' + esc(g.name) + '</span><span style="flex:1;"></span>' +
-        '<span style="color:var(--text-muted);">' + g.size + ' bot-day' + (g.size === 1 ? '' : 's') +
-        ', none on the tracker yet</span></div></div>';
-    }
-    var b = trkGroupBlock(g.name, g.counts);
-    return g.untracked
-      ? b.replace('</div>' + '</div>'.slice(0, 0), '</div>') .replace(/<\/div>$/,
-          '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">' +
-          g.untracked + ' more not tracked</div></div>')
-      : b;
-  };
-  var rg = group(function (r) { return r.reviewerId || ''; }, function (k) { return teamName(k) || 'Unassigned'; });
-  byR.innerHTML = rg.length ? rg.map(block).join('') : empty;
-  var bg = group(function (r) { return r.robot; }, function (k) { return k; });
-  byB.innerHTML = bg.length ? bg.map(block).join('') : empty;
-}
-
 function renderDtOptions() {
   var rSel = document.getElementById('dt-reviewer');
   if (rSel) {
     var cur = rSel.value;
-    rSel.innerHTML = '<option value="">All reviewers</option>' + _team.map(function (u) {
+    rSel.innerHTML = '<option value="">Reviewer</option>' + _team.map(function (u) {
       return '<option value="' + escAttr(u.id) + '"' + (u.id === cur ? ' selected' : '') + '>' + esc(u.username) + '</option>';
     }).join('');
   }
   var bSel = document.getElementById('dt-robot');
   if (bSel) {
     var curB = bSel.value;
-    bSel.innerHTML = '<option value="">All bots</option>' + allRobots().map(function (r) {
+    bSel.innerHTML = '<option value="">Bot</option>' + allRobots().map(function (r) {
       return '<option value="' + escAttr(r) + '"' + (r === curB ? ' selected' : '') + '>' + esc(r) + '</option>';
     }).join('');
   }
@@ -3414,7 +3449,6 @@ function renderDateTable() {
   var rows = dtRows();
   renderDtCards(rows);
   renderDtTable(rows);
-  renderDtBreakdown(rows);
 }
 
 function exportDateTableCSV() {
@@ -3540,7 +3574,7 @@ function setDatesView(v) {
   });
   var hint = document.getElementById('dates-hint');
   var hints = {
-    table: 'One row per bot per day. Review status is what the reviewer said on the Progress Tracker; upload status is what the data shows. They are separate on purpose \u2014 a review can be finished for a day where nothing arrived. Click a row to open its logs.',
+    table: 'One row per bot per day, from who is responsible for it. Done means that reviewer has logged something for that date; Pending means they have not. Upload state sits beside the bot name when something is off. Click a row to open its logs.',
     map: 'Each square is one date \u2014 blank squares are dates with nothing logged at all. Reviewed = the date has real evaluations; the brighter the square, the more were logged. Click a square to open its logs.',
     bot: 'One row per bot, one column per date. A blank square means that bot was never logged on that date; "No data" means it was logged but had nothing to evaluate. The count beside each name is how many dates that bot is blank. Click a square to open that bot\u2019s logs for that date.',
     list: 'One row per date that has logs. Reviewed = the date has real evaluations. No data = entries logged as not evaluated. Late upload = at least one entry was tagged as arriving late. Click a row to open its logs.'

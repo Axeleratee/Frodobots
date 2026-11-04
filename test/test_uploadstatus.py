@@ -41,20 +41,21 @@ with sync_playwright() as pw:
     # The two must read differently on screen, and only one of them is red.
     txt = pg.inner_text("#dt-body")
     chk("labels_differ", "No data" in txt and "Not logged" in txt, "| %s" % txt[:120])
-    colors = pg.evaluate("""() => {
+    dots = pg.evaluate("""() => {
         const out = {};
-        document.querySelectorAll('#dt-body tr').forEach(tr => {
-          const b = tr.querySelector('td:nth-child(5) span');
-          if (b) out[b.textContent.trim()] = getComputedStyle(b).color;
+        document.querySelectorAll('#dt-body tr td:nth-child(3) .umark').forEach(m => {
+          const i = m.querySelector('i');
+          out[m.textContent.trim()] = i ? getComputedStyle(i).backgroundColor : null;
         });
         return out; }""")
-    chk("nodata_is_not_red", colors.get("No data") != colors.get("Not logged"),
-        "| %s" % colors)
+    chk("nodata_is_not_red", dots.get("No data") != dots.get("Not logged"), "| %s" % dots)
+    chk("ontime_prints_nothing", "On time" not in dots,
+        "| the normal case is not worth the reader's attention: %s" % list(dots))
 
     # Cards must separate them too.
-    cards = pg.inner_text("#dates-cards")
-    chk("card_no_data", "NO DATA" in cards and "checked, none arrived" in cards)
-    chk("card_not_logged", "NOT LOGGED" in cards and "nobody looked yet" in cards)
+    sec = pg.inner_text("#dates-secondary")
+    chk("secondary_nothing_arrived", "Nothing arrived" in sec, "| %s" % sec)
+    chk("secondary_missing", "Missing evaluations" in sec)
     counts = pg.evaluate("() => { const c = dtCounts(dtRows()); return [c.nodata, c.missing]; }")
     chk("counts_separate", counts[0] >= 1 and counts[1] >= 1, "| nodata=%d missing=%d" % tuple(counts))
 

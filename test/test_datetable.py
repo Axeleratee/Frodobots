@@ -42,7 +42,8 @@ with sync_playwright() as pw:
     # ---- review status is derived from who logged what ----
     r5 = row(D[5], "Alpha")
     chk("owners_log_is_done", "Done" in r5, "| cris owns Alpha and logged it: %s" % r5)
-    chk("upload_ontime", "On time" in r5)
+    chk("ontime_is_quiet", "Late" not in r5 and "Not logged" not in r5 and "No data" not in r5,
+        "| the normal case prints no marker at all: %s" % r5)
 
     r4 = row(D[4], "Alpha")
     chk("late_upload_flagged", "Late" in r4, "| %s" % r4)
@@ -71,9 +72,11 @@ with sync_playwright() as pw:
 
     # ---- cards come from the rows, not from mock numbers ----
     cards = pg.inner_text("#dates-cards")
-    for word in ("ASSIGNED", "DONE", "PENDING",
-                 "LATE UPLOADS", "NO DATA", "NOT LOGGED", "COMPLETION"):
-        chk("card_" + word.split()[0].lower(), word in cards)
+    for word in ("Assigned Reviews", "Completed", "Pending", "Completion Rate"):
+        chk("card_" + word.split()[0].lower(), word in cards, "| %s" % cards.replace("\n", " ")[:80])
+    sec = pg.inner_text("#dates-secondary")
+    for word in ("Late uploads", "Nothing arrived", "Missing evaluations"):
+        chk("secondary_" + word.split()[0].lower(), word in sec, "| %s" % sec)
     n_late = pg.evaluate("() => dtCounts(dtRows()).late")
     shown_late = pg.eval_on_selector_all("#dt-body tr", """els => els.filter(
         r => r.innerText.includes('Late')).length""")
@@ -141,8 +144,12 @@ with sync_playwright() as pw:
     chk("back_to_table", pg.eval_on_selector_all("#dt-body tr", "e => e.length") == total)
 
     # ---- breakdown ----
-    chk("by_reviewer", pg.eval_on_selector_all("#dt-by-reviewer > div", "e => e.length") >= 1)
-    chk("by_bot_blocks", pg.eval_on_selector_all("#dt-by-robot > div", "e => e.length") >= 2)
+    chk("charts_removed", pg.eval_on_selector_all("#dates-breakdown", "e => e.length") == 0,
+        "| the brief asked for information, not charts")
+    chk("four_columns", pg.eval_on_selector_all("#dt-body tr:first-child td", "e => e.length") == 4)
+    chk("filters_are_chips", pg.eval_on_selector_all("#dates-tfilters .fchip", "e => e.length") >= 5)
+    chk("header_title", "HBA Progress Overview" in pg.inner_text("#card-dates"))
+    chk("header_subtitle", "Monitor review progress and completion" in pg.inner_text("#card-dates"))
 
     # ---- CSV ----
     with pg.expect_download() as dl:
