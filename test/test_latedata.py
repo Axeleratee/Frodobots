@@ -15,7 +15,7 @@ D = {n: H.days_ago(n) for n in range(0, 12)}
 
 asg = [H.assign("a1", H.CRIS, "Alpha", D[8]), H.assign("a2", H.ADMIN, "Echo", D[8])]
 obs = [H.obs("o%d" % n, D[n], "Alpha", by=H.CRIS) for n in range(2, 8)]
-tasks = [H.task("k1", D[4], "Alpha", H.CRIS, "completed", D[2] + "T09:00:00Z")]
+tasks = []   # review_tasks is no longer read; status comes from the logs
 
 def reviewers(page):
     return page.evaluate("""() => [...document.querySelectorAll('#dt-body tr td:nth-child(2)')]
@@ -33,24 +33,16 @@ with sync_playwright() as pw:
     # Simulate the real order: the table renders before assignments arrive.
     pg.evaluate("() => { _assignments = []; renderDateTable(); }")
     pg.wait_for_timeout(300)
-    # One row keeps its reviewer with no assignments at all: it comes from the
-    # review task, which names a reviewer of its own. Everything else blanks.
-    named_now = [r for r in reviewers(pg) if r and r != "\u2014"]
-    chk("blank_without_assignments", len(named_now) == 1,
-        "| only the task-backed row keeps a name: %s" % reviewers(pg)[:5])
+    # With no assignments there is no expected reviewer anywhere: status is
+    # derived from assignments plus logs, and neither alone names an owner.
+    chk("blank_without_assignments",
+        all(r == "\u2014" for r in reviewers(pg)), "| %s" % reviewers(pg)[:5])
 
-    # loadAssignments alone must bring the table back - no extra render call.
     pg.evaluate("() => loadAssignments()"); pg.wait_for_timeout(800)
     chk("loadAssignments_refreshes_table",
-        any(r and r != "—" for r in reviewers(pg)), "| %s" % reviewers(pg)[:6])
+        any(r and r != "\u2014" for r in reviewers(pg)), "| %s" % reviewers(pg)[:6])
     chk("loadAssignments_refreshes_cards",
         pg.evaluate("() => dtCounts(dtRows()).total") > 0)
-
-    # loadTasks alone must bring review status back.
-    pg.evaluate("() => { _tasks = []; renderDateTable(); }"); pg.wait_for_timeout(300)
-    chk("no_status_without_tasks", "Completed" not in pg.inner_text("#dt-body"))
-    pg.evaluate("() => loadTasks()"); pg.wait_for_timeout(800)
-    chk("loadTasks_refreshes_table", "Completed" in pg.inner_text("#dt-body"))
 
     # loadTeam alone must resolve the names.
     pg.evaluate("() => { _team = []; _teamById = {}; renderDateTable(); }"); pg.wait_for_timeout(300)

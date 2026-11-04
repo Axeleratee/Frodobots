@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 import harness as H
 
 chk = H.Checks(); errs = []
-url = H.build("app_dt.html")
+url = H.build("app_dt.html", config={"REST_DAYS": []})
 D = {n: H.days_ago(n) for n in range(0, 20)}
 
 asg = [H.assign("a1", H.CRIS, "Alpha", D[8]), H.assign("a2", H.ADMIN, "Echo", D[8])]
@@ -17,13 +17,7 @@ obs = [
     H.obs("x3", D[3], "Alpha", by=H.CRIS, no_data=True),      # looked, nothing there
     H.obs("x4", D[5], "Echo",  by=H.ADMIN),
 ]
-tasks = [
-    # finished the review of a day where NOTHING arrived - the two statuses
-    # must not contaminate each other
-    H.task("k1", D[3], "Alpha", H.CRIS, "completed", D[2] + "T09:00:00Z"),
-    H.task("k2", D[4], "Alpha", H.CRIS, "in_progress"),
-    H.task("k3", D[5], "Alpha", H.CRIS, "pending"),
-]
+tasks = []   # review_tasks is no longer read; status is derived from the logs
 
 with sync_playwright() as pw:
     br = pw.chromium.launch()
@@ -45,49 +39,65 @@ with sync_playwright() as pw:
               .find(r => r.dataset.date === d && r.dataset.bot === b);
             return tr ? tr.innerText.replace(/\\n/g, ' | ') : null; }""", [date, bot])
 
-    # ---- the rule: a logged observation never completes a review ----
+    # ---- review status is derived from who logged what ----
     r5 = row(D[5], "Alpha")
-    chk("logs_do_not_complete", "Pending" in r5, "| %s" % r5)
+    chk("owners_log_is_done", "Done" in r5, "| cris owns Alpha and logged it: %s" % r5)
     chk("upload_ontime", "On time" in r5)
 
     r4 = row(D[4], "Alpha")
     chk("late_upload_flagged", "Late" in r4, "| %s" % r4)
-    chk("review_independent_of_upload", "In progress" in r4)
+    chk("late_upload_still_done", "Done" in r4,
+        "| arriving late is an upload fact, not an unfinished review")
 
-    # ---- the case that proves they are separate ----
+    # A day where nothing arrived: the reviewer logged "no data", so the
+    # review is Done while the upload reads "No data". Still two answers.
     r3 = row(D[3], "Alpha")
-    # The reviewer looked, nothing had arrived, and they finished the review.
-    # Upload says "No data" (checked, none arrived), NOT "Not logged".
-    chk("completed_review_of_empty_day", "Completed" in r3 and "No data" in r3,
-        "| %s" % r3)
+    chk("empty_day_review_is_done", "Done" in r3, "| %s" % r3)
+    chk("empty_day_upload_is_nodata", "No data" in r3)
     chk("checked_day_is_not_called_unlogged", "Not logged" not in r3)
 
-    # ---- no record invented ----
+    # Assigned but nothing logged -> Pending, from the assignment alone.
     r6 = row(D[6], "Alpha")
-    chk("no_task_says_not_tracked", "Not tracked" in r6, "| %s" % r6)
-    chk("no_task_is_not_pending", "Pending" not in r6)
+    chk("assigned_and_unlogged_is_pending", "Pending" in r6, "| %s" % r6)
+    chk("pending_row_has_an_owner", "cris" in r6)
+
+    # Nobody responsible -> no review was ever expected.
+    r_un = pg.evaluate("""() => {
+        const tr = [...document.querySelectorAll('#dt-body tr')]
+          .find(r => r.innerText.includes('Not assigned'));
+        return tr ? tr.innerText.replace(/\\n/g, ' | ') : null; }""")
+    chk("unassigned_says_not_assigned", r_un is None or "Not assigned" in r_un,
+        "| %s" % r_un)
 
     # ---- cards come from the rows, not from mock numbers ----
     cards = pg.inner_text("#dates-cards")
-    for word in ("ASSIGNED", "COMPLETED", "IN PROGRESS", "PENDING",
+    for word in ("ASSIGNED", "DONE", "PENDING",
                  "LATE UPLOADS", "NO DATA", "NOT LOGGED", "COMPLETION"):
         chk("card_" + word.split()[0].lower(), word in cards)
     n_late = pg.evaluate("() => dtCounts(dtRows()).late")
     shown_late = pg.eval_on_selector_all("#dt-body tr", """els => els.filter(
         r => r.innerText.includes('Late')).length""")
     chk("late_card_matches_rows", n_late == shown_late, "| card %d vs rows %d" % (n_late, shown_late))
-    chk("rate_excludes_untracked",
-        pg.evaluate("() => { const c = dtCounts(dtRows()); return c.rate === Math.round(c.completed/c.tracked*100); }"))
+    chk("rate_excludes_unassigned",
+        pg.evaluate("() => { const c = dtCounts(dtRows()); return c.rate === Math.round(c.done/c.tracked*100); }"))
 
     # ---- filters ----
     total = pg.eval_on_selector_all("#dt-body tr", "e => e.length")
     pg.select_option("#dt-upload", "late"); pg.wait_for_timeout(600)
     chk("filter_upload", pg.eval_on_selector_all("#dt-body tr", "e => e.length") == 1)
     pg.select_option("#dt-upload", ""); pg.wait_for_timeout(400)
-    pg.select_option("#dt-review", "completed"); pg.wait_for_timeout(600)
-    chk("filter_review", pg.eval_on_selector_all("#dt-body tr", "e => e.length") == 1)
+    pg.select_option("#dt-review", "done"); pg.wait_for_timeout(600)
+    chk("filter_review", pg.evaluate("""() => {
+        const rs = [...document.querySelectorAll('#dt-body tr')];
+        return rs.length > 0 && rs.every(r => r.innerText.includes('Done')); }"""))
+    pg.select_option("#dt-review", "pending"); pg.wait_for_timeout(600)
+    chk("filter_pending", pg.evaluate("""() => {
+        const rs = [...document.querySelectorAll('#dt-body tr')];
+        return rs.length > 0 && rs.every(r => r.innerText.includes('Pending')); }"""))
     pg.select_option("#dt-review", "untracked"); pg.wait_for_timeout(600)
-    chk("filter_untracked", pg.eval_on_selector_all("#dt-body tr", "e => e.length") >= 1)
+    chk("filter_unassigned_shows_only_those", pg.evaluate("""() => [...document.querySelectorAll('#dt-body tr')]
+        .every(r => r.innerText.includes('Not assigned'))"""),
+        "| every bot-day here is assigned, so an empty result is correct")
     pg.select_option("#dt-review", ""); pg.wait_for_timeout(400)
     pg.select_option("#dt-robot", "Echo"); pg.wait_for_timeout(600)
     chk("filter_bot", pg.evaluate("""() => [...document.querySelectorAll('#dt-body tr')]

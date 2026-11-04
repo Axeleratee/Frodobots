@@ -50,15 +50,13 @@ with sync_playwright() as pw:
         .filter(d => new Date(d + 'T00:00:00').getDay() === 0)""")
     chk("table_skips_sundays", sund == [], "| %s" % sund)
 
-    # "Create from assignments" must not put Sundays on the board
-    pg.click("#tab-tracker"); pg.wait_for_timeout(900)
-    mode = {"accept": True}
-    pg.on("dialog", lambda d: d.accept())
-    pg.click("#trk-generate"); pg.wait_for_timeout(1400)
-    made = pg.evaluate("""() => _tasks.map(t => t.obs_date)
+    # The tracker derives its rows from the same obligations, so no Sunday
+    # can appear there either.
+    pg.click("#tab-tracker"); pg.wait_for_timeout(1000)
+    sund_trk = pg.evaluate("""() => allExpected().map(r => r.obs_date)
         .filter(d => new Date(d + 'T00:00:00').getDay() === 0)""")
-    chk("generate_skips_sundays", made == [], "| %s" % made)
-    chk("generate_made_something", pg.evaluate("() => _tasks.length") > 0)
+    chk("tracker_skips_sundays", sund_trk == [], "| %s" % sund_trk)
+    chk("tracker_has_rows", pg.evaluate("() => allExpected().length") > 0)
 
     # A team that works every day must be unaffected.
     url7 = H.build("app_rest7.html", config={"REST_DAYS": []})

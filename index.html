@@ -551,11 +551,6 @@ html, body {
         <input type="checkbox" id="f-late" style="width:auto; margin:0;">
         Late upload <span style="color:var(--text-muted); font-size:12px;">(the footage arrived after the expected date)</span>
       </label>
-      <label id="f-done-row" style="font-size:13px; display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:7px;">
-        <input type="checkbox" id="f-done" style="width:auto; margin:0;">
-        <span id="f-done-label"></span>
-        <span id="f-done-note" style="color:var(--text-muted); font-size:12px;"></span>
-      </label>
     </div>
     <div id="f-detail-fields">
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:10px; margin-top:10px;">
@@ -642,8 +637,9 @@ html, body {
       <span id="trk-scope" style="font-size:12px; color:var(--text-muted);"></span>
     </div>
     <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
-      One row per review someone owes. A review is only finished when the reviewer marks it
-      finished &mdash; logging an observation does not close it on their behalf.
+      One row per review someone owes. Status is worked out from the logs: a review is
+      <b>Done</b> once its reviewer has saved an observation for that bot and date, and
+      <b>Pending</b> until then. Nothing here needs ticking.
     </div>
     <div id="trk-cards" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:11px;"></div>
   </div>
@@ -671,8 +667,7 @@ html, body {
         <select id="trk-f-status" style="width:100%;">
           <option value="">All statuses</option>
           <option value="pending">Pending</option>
-          <option value="in_progress">In progress</option>
-          <option value="completed">Completed</option>
+          <option value="done">Done</option>
         </select>
       </div>
       <div>
@@ -687,40 +682,7 @@ html, body {
     <div style="display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap;">
       <span id="trk-count" style="font-size:12.5px; color:var(--text-secondary);"></span>
       <span style="flex:1;"></span>
-      <button id="trk-catchup" style="font-size:12px; padding:5px 11px; display:none;">Close the ones with logs</button>
-      <button id="trk-bulk" style="font-size:12px; padding:5px 11px; display:none;">Mark shown as done</button>
       <button id="trk-export" style="font-size:12px; padding:5px 11px;">Export CSV</button>
-      <button id="trk-generate" style="font-size:12px; padding:5px 11px; display:none;">Create from assignments</button>
-      <button id="trk-add-toggle" style="font-size:12px; padding:5px 11px; display:none; background:var(--fill-primary); color:var(--on-primary); border:none;">Add review</button>
-    </div>
-
-    <div id="trk-add" style="display:none; margin-top:11px; padding:11px 12px; background:var(--surface-1); border:1px solid var(--border); border-radius:10px;">
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:9px; align-items:end;">
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">Date</label>
-          <input type="date" id="trk-n-date" style="width:100%;">
-        </div>
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">Bot</label>
-          <select id="trk-n-robot" style="width:100%;"></select>
-        </div>
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">Reviewer</label>
-          <select id="trk-n-reviewer" style="width:100%;"></select>
-        </div>
-        <div>
-          <label style="font-size:12px; color:var(--text-secondary);">Status</label>
-          <select id="trk-n-status" style="width:100%;">
-            <option value="pending" selected>Pending</option>
-            <option value="in_progress">In progress</option>
-            <option value="completed">Completed</option>
-          </select>
-        </div>
-        <div>
-          <button id="trk-n-save" style="width:100%; background:var(--fill-primary); color:var(--on-primary); border:none;">Add</button>
-        </div>
-      </div>
-      <div id="trk-n-status-msg" style="font-size:12.5px; margin-top:8px; min-height:17px; color:var(--text-secondary);"></div>
     </div>
 
     <div style="overflow-x:auto; margin-top:12px;">
@@ -731,9 +693,6 @@ html, body {
             <th class="trk-sort" data-sort="reviewer" style="padding:7px 8px; cursor:pointer; white-space:nowrap;">HBA reviewer</th>
             <th class="trk-sort" data-sort="robot"    style="padding:7px 8px; cursor:pointer; white-space:nowrap;">Bot</th>
             <th class="trk-sort" data-sort="status"   style="padding:7px 8px; cursor:pointer; white-space:nowrap;">Status</th>
-            <th style="padding:7px 8px; white-space:nowrap;">Done</th>
-            <th class="trk-sort" data-sort="updated"  style="padding:7px 8px; cursor:pointer; white-space:nowrap;">Last updated</th>
-            <th style="padding:7px 8px;"></th>
           </tr>
         </thead>
         <tbody id="trk-body"></tbody>
@@ -756,7 +715,7 @@ html, body {
     </div>
     <div style="margin-top:20px;">
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-        <div style="font-size:13px; font-weight:600;">Finished over time</div>
+        <div style="font-size:13px; font-weight:600;">How much of each day is done</div>
         <span style="flex:1;"></span>
         <select id="trk-trend-grain" style="width:auto; font-size:11.5px; padding:3px 24px 3px 8px;">
           <option value="day" selected>By day</option>
@@ -1109,10 +1068,9 @@ html, body {
           <label style="font-size:12px; color:var(--text-secondary);">Review status</label>
           <select id="dt-review" style="width:100%;">
             <option value="">All reviews</option>
-            <option value="completed">Completed</option>
-            <option value="in_progress">In progress</option>
+            <option value="done">Done</option>
             <option value="pending">Pending</option>
-            <option value="untracked">Not tracked</option>
+            <option value="untracked">Not assigned</option>
           </select>
         </div>
         <div>
@@ -1305,12 +1263,6 @@ const REVIEW_DELAY_DAYS = Math.max(0, parseInt(APP_CONFIG.REVIEW_DELAY_DAYS, 10)
 // Days with no shift. Nobody owes a review on these, so they must never be
 // counted as a gap - a day the team was never expected to work is not a
 // missed day, and a permanent red square would train people to ignore red.
-// When the team logs one entry per bot-day, saving it IS finishing it, and
-// asking for a second click every time only produces a board full of
-// Pending rows that are actually done. The opt-out tick covers the team
-// that splits a bot-day across several entries.
-const AUTO_COMPLETE_ON_LOG = APP_CONFIG.AUTO_COMPLETE_ON_LOG !== false;
-
 const REST_DAYS = Array.isArray(APP_CONFIG.REST_DAYS)
   ? APP_CONFIG.REST_DAYS.map(Number).filter(function (n) { return n >= 0 && n <= 6; })
   : [];
@@ -2424,46 +2376,66 @@ function renderTeamOps() {
 /* =====================================================================
    PROGRESS TRACKER
 
-   One row per review someone owes: <reviewer> reviews <robot> for <date>.
+   Status is DERIVED, never set by hand. A review is Done the moment its
+   reviewer has saved an observation for that bot and that date, and
+   Pending until then. Nothing to tick, nothing to remember, and no stored
+   status that can drift out of step with the logs.
 
-   Status is set by a person and NEVER inferred. A reviewer may log part of
-   a day's work and come back to it, so the existence of an observation
-   does not mean the review is finished - only the reviewer can say that.
-   The table does show whether any observation exists, as a hint, but it
-   never moves the status on their behalf.
+   Two sources of truth, each answering its own question:
+     assignments  - what was EXPECTED (who owns which bot, which days)
+     observations - what was DONE
    ===================================================================== */
-var _tasks = [];
-var _tasksLoaded = false;
 var _trkSort = { key: 'date', dir: -1 };     // newest first
 
 const TRK_STATUS = {
-  pending:     { label: 'Pending',     color: 'var(--text-danger)', bg: 'rgba(255,111,111,0.10)', border: 'rgba(255,111,111,0.28)' },
-  in_progress: { label: 'In progress', color: '#d9a93f',            bg: 'rgba(217,169,63,0.12)',  border: 'rgba(217,169,63,0.32)' },
-  completed:   { label: 'Completed',   color: 'var(--fb-green)',    bg: 'rgba(95,224,160,0.12)',  border: 'rgba(95,224,160,0.30)' }
+  pending: { label: 'Pending',      color: 'var(--text-danger)', bg: 'rgba(255,111,111,0.10)', border: 'rgba(255,111,111,0.28)' },
+  done:    { label: '\u2713 Done', color: 'var(--fb-green)',    bg: 'rgba(95,224,160,0.12)',  border: 'rgba(95,224,160,0.30)' }
 };
-const TRK_ORDER = { pending: 0, in_progress: 1, completed: 2 };
+const TRK_ORDER = { pending: 0, done: 1 };
 
-async function loadTasks() {
-  if (!sb) return;
-  try {
-    const { data, error } = await sb.from('review_tasks')
-      .select('id, obs_date, robot, reviewer_id, status, notes, updated_at, completed_at')
-      .order('obs_date', { ascending: false });
-    if (error) throw error;
-    _tasks = data || [];
-    _tasksLoaded = true;
-  } catch (e) {
-    console.warn('review_tasks unavailable', e && e.message);
-    _tasks = [];
-    _tasksLoaded = false;
-  }
-  refreshTeamViews();
+// "date|robot|who" for every observation, keyed by the person who logged
+// it. Older rows carry only a name, so they are indexed both ways.
+function loggedIndex() {
+  var ix = {};
+  entries.forEach(function (e) {
+    if (!e.robot || !e.date) return;
+    if (e._by) ix[e.date + '|' + e.robot + '|' + e._by] = true;
+    var n = observerName(e);
+    if (n) ix[e.date + '|' + e.robot + '|name:' + n] = true;
+  });
+  return ix;
 }
 
-// Everything that is rebuilt when assignments, review tasks or the roster
-// arrive. Loaders call THIS, never a hand-picked subset: the date table was
-// left out of loadAssignments and so rendered once at startup, before the
-// assignments had loaded, leaving every reviewer blank for the whole session.
+// One review per (date, robot, reviewer) that somebody was responsible for.
+// Several observations for one assignment still count as one review, and a
+// log by somebody else does not close another person's assignment.
+function expectedReviews(from, to) {
+  var ix = loggedIndex();
+  return obligationsIn(from, to).map(function (o) {
+    var done = ix[o.date + '|' + o.robot + '|' + o.userId] ||
+               ix[o.date + '|' + o.robot + '|name:' + (teamName(o.userId) || '\u0000')];
+    return {
+      id: o.date + '|' + o.robot + '|' + o.userId,
+      obs_date: o.date, robot: o.robot, reviewer_id: o.userId,
+      status: done ? 'done' : 'pending'
+    };
+  });
+}
+
+// The tracker works over the same window as the date overview: 26 weeks,
+// ending at the newest data that has actually arrived.
+function trkWindow() {
+  var newest = latestReviewableDate();
+  return { from: isoShift(newest, -(26 * 7 - 1)), to: newest };
+}
+
+function allExpected() {
+  var w = trkWindow();
+  return expectedReviews(w.from, w.to);
+}
+
+// Everything that is rebuilt when assignments, observations or the roster
+// change. Loaders and the save path call THIS, never a hand-picked subset.
 function refreshTeamViews() {
   if (typeof renderAssignments === 'function') renderAssignments();
   if (typeof renderTracker === 'function') renderTracker();
@@ -2471,16 +2443,11 @@ function refreshTeamViews() {
   if (typeof renderTeamOps === 'function') renderTeamOps();
 }
 
-function trkCan(t) {
-  // Admins run the board; a reviewer may move their own work along.
-  if (currentRole === 'admin') return true;
-  return currentRole === 'editor' && t && t.reviewer_id === currentUserId();
-}
 function currentUserId() {
   return (window.__sessionUserId || null);
 }
 
-// Does any observation exist for this bot-day? Shown as a hint only.
+// Does any observation exist for this bot-day, by anyone?
 function trkHasObservations(t) {
   return entries.some(function (e) { return e.robot === t.robot && e.date === t.obs_date; });
 }
@@ -2496,14 +2463,14 @@ function trkFilters() {
 
 function trkFiltered() {
   var f = trkFilters();
-  return _tasks.filter(function (t) {
+  return allExpected().filter(function (t) {
     if (f.from && t.obs_date < f.from) return false;
     if (f.to && t.obs_date > f.to) return false;
     if (f.reviewer && String(t.reviewer_id || '') !== f.reviewer) return false;
     if (f.robot && t.robot !== f.robot) return false;
     if (f.status && t.status !== f.status) return false;
     if (f.q) {
-      var hay = (t.robot + ' ' + (teamName(t.reviewer_id) || '') + ' ' + (t.notes || '')).toLowerCase();
+      var hay = (t.robot + ' ' + (teamName(t.reviewer_id) || '')).toLowerCase();
       if (hay.indexOf(f.q) === -1) return false;
     }
     return true;
@@ -2513,16 +2480,15 @@ function trkFiltered() {
     else if (k === 'reviewer') v = (teamName(a.reviewer_id) || '~').localeCompare(teamName(b.reviewer_id) || '~');
     else if (k === 'robot') v = a.robot.localeCompare(b.robot);
     else if (k === 'status') v = TRK_ORDER[a.status] - TRK_ORDER[b.status];
-    else if (k === 'updated') v = String(a.updated_at || '').localeCompare(String(b.updated_at || ''));
-    // Date is the tie-breaker everywhere else, so rows never jump around.
-    return v !== 0 ? v * d : a.obs_date.localeCompare(b.obs_date) * -1;
+    return v !== 0 ? v * d
+      : (a.obs_date.localeCompare(b.obs_date) * -1) || a.robot.localeCompare(b.robot);
   });
 }
 
 function trkCounts(rows) {
-  var c = { total: rows.length, pending: 0, in_progress: 0, completed: 0 };
+  var c = { total: rows.length, done: 0, pending: 0 };
   rows.forEach(function (t) { c[t.status]++; });
-  c.rate = c.total ? Math.round((c.completed / c.total) * 100) : null;
+  c.rate = c.total ? Math.round((c.done / c.total) * 100) : null;
   return c;
 }
 
@@ -2552,7 +2518,7 @@ function renderTrkOptions() {
   }
   // Only bots that actually appear on the board, plus the known roster for
   // the add form - filtering by a bot with no rows is a dead end.
-  var onBoard = [...new Set(_tasks.map(function (t) { return t.robot; }))].sort();
+  var onBoard = [...new Set(allExpected().map(function (t) { return t.robot; }))].sort();
   var bSel = document.getElementById('trk-f-robot');
   if (bSel) {
     var curB = bSel.value;
@@ -2594,13 +2560,12 @@ function renderTrkCards(rows) {
       '</div>';
   };
   host.innerHTML =
-    tile('TOTAL REVIEWS', c.total, 'var(--text-primary)', 'in this view') +
-    tile('COMPLETED', c.completed, TRK_STATUS.completed.color) +
-    tile('IN PROGRESS', c.in_progress, TRK_STATUS.in_progress.color) +
+    tile('ASSIGNED REVIEWS', c.total, 'var(--text-primary)', 'in this view') +
+    tile('DONE', c.done, TRK_STATUS.done.color) +
     tile('PENDING', c.pending, TRK_STATUS.pending.color) +
     tile('COMPLETION RATE', c.rate === null ? '\u2014' : c.rate + '%',
          c.rate === null ? 'var(--text-muted)' : covColor(c.rate),
-         c.rate === null ? 'nothing to measure' : c.completed + ' of ' + c.total + ' finished');
+         c.rate === null ? 'nothing assigned yet' : c.done + ' of ' + c.total + ' done');
 }
 
 function renderTrkTable(rows) {
@@ -2609,14 +2574,14 @@ function renderTrkTable(rows) {
   var count = document.getElementById('trk-count');
   if (!body) return;
 
+  var all = allExpected().length;
   if (count) {
     count.textContent = rows.length
       ? rows.length + ' review' + (rows.length === 1 ? '' : 's') + ' shown' +
-        (rows.length !== _tasks.length ? ' of ' + _tasks.length : '')
+        (rows.length !== all ? ' of ' + all : '')
       : '';
   }
 
-  // Show which column is sorted, and which way.
   Array.prototype.forEach.call(document.querySelectorAll('.trk-sort'), function (th) {
     var on = th.dataset.sort === _trkSort.key;
     th.style.color = on ? 'var(--text-primary)' : 'var(--text-secondary)';
@@ -2628,58 +2593,32 @@ function renderTrkTable(rows) {
     body.innerHTML = '';
     if (empty) {
       empty.style.display = 'block';
-      empty.textContent = !_tasksLoaded
-        ? 'The tracker is not set up yet \u2014 run supabase-tracker.sql in the Supabase SQL editor once, then refresh.'
-        : (_tasks.length ? 'No reviews match these filters.'
-                         : 'No reviews on the board yet. Use \u201cCreate from assignments\u201d to fill it from who owns which bot.');
+      empty.textContent = all
+        ? 'No reviews match these filters.'
+        : 'No reviews expected yet. Say who is responsible for each bot under ' +
+          'User Management \u2192 Assignments, and the days they own will appear here.';
     }
     return;
   }
   if (empty) empty.style.display = 'none';
 
   body.innerHTML = rows.map(function (t) {
-    var mine = trkCan(t);
-    var hint = trkHasObservations(t)
-      ? '<span title="Observations exist for this bot and date. The review is still only finished when you say so." ' +
-        'style="font-size:10.5px; color:var(--text-muted);">has logs</span>'
-      : '';
-    var sel = mine
-      ? '<select class="trk-st" data-id="' + escAttr(t.id) + '" style="width:auto; font-size:11.5px; padding:3px 24px 3px 8px;">' +
-        Object.keys(TRK_STATUS).map(function (k) {
-          return '<option value="' + k + '"' + (k === t.status ? ' selected' : '') + '>' + TRK_STATUS[k].label + '</option>';
-        }).join('') + '</select>'
-      : trkPill(t.status);
-
-    var done = t.status === 'completed'
-      ? '<span style="color:var(--fb-green); font-size:15px;">\u2713</span>'
-      : (mine ? '<button type="button" class="trk-done" data-id="' + escAttr(t.id) + '" ' +
-                'title="Mark this review finished" style="font-size:11px; padding:2px 9px; background:transparent;">Mark done</button>'
-              : '<span style="color:var(--text-muted);">\u2014</span>');
-
-    return '<tr data-task="' + escAttr(t.id) + '" style="border-bottom:0.5px solid var(--border);">' +
+    return '<tr class="trk-row" data-task="' + escAttr(t.id) + '" ' +
+      'data-date="' + escAttr(t.obs_date) + '" data-bot="' + escAttr(t.robot) + '" ' +
+      'style="border-bottom:0.5px solid var(--border); cursor:pointer;">' +
       '<td style="padding:7px 8px; white-space:nowrap;">' + esc(plainDate(t.obs_date)) + '</td>' +
-      '<td style="padding:7px 8px;">' + esc(teamName(t.reviewer_id) || 'Unassigned') + '</td>' +
-      '<td style="padding:7px 8px; font-weight:600;">' + esc(t.robot) +
-        (hint ? ' ' + hint : '') + '</td>' +
-      '<td style="padding:7px 8px;">' + sel + '</td>' +
-      '<td style="padding:7px 8px; text-align:center;">' + done + '</td>' +
-      '<td style="padding:7px 8px; color:var(--text-muted); white-space:nowrap;">' + esc(trkWhen(t.updated_at)) + '</td>' +
-      '<td style="padding:7px 8px; white-space:nowrap;">' +
-        (currentRole === 'admin'
-          ? '<button type="button" class="trk-del" data-id="' + escAttr(t.id) + '" aria-label="Delete" title="Delete" ' +
-            'style="font-size:11px; padding:2px 9px; background:transparent; color:var(--text-danger);">Delete</button>'
-          : '') +
-      '</td></tr>';
+      '<td style="padding:7px 8px;">' + esc(teamName(t.reviewer_id) || '\u2014') + '</td>' +
+      '<td style="padding:7px 8px; font-weight:600;">' + esc(t.robot) + '</td>' +
+      '<td style="padding:7px 8px;">' + trkPill(t.status) + '</td>' +
+      '</tr>';
   }).join('');
 
-  Array.prototype.forEach.call(body.querySelectorAll('.trk-st'), function (el) {
-    el.addEventListener('change', function () { setTaskStatus(el.dataset.id, el.value); });
-  });
-  Array.prototype.forEach.call(body.querySelectorAll('.trk-done'), function (el) {
-    el.addEventListener('click', function () { setTaskStatus(el.dataset.id, 'completed'); });
-  });
-  Array.prototype.forEach.call(body.querySelectorAll('.trk-del'), function (el) {
-    el.addEventListener('click', function () { deleteTask(el.dataset.id); });
+  // Read-only, so the row itself is the action: open that bot-day's logs.
+  Array.prototype.forEach.call(body.querySelectorAll('.trk-row'), function (tr) {
+    tr.addEventListener('click', function () {
+      showPage('observations');
+      focusLogsOnDate(tr.dataset.date, tr.dataset.bot);
+    });
   });
 }
 
@@ -2692,26 +2631,9 @@ function renderTracker() {
   renderTrkAnalytics(rows);
 
   var scope = document.getElementById('trk-scope');
-  if (scope) scope.textContent = _tasksLoaded ? (_tasks.length + ' on the board') : 'not set up yet';
-
-  var isAdmin = currentRole === 'admin';
-  ['trk-add-toggle', 'trk-generate'].forEach(function (id) {
-    var b = document.getElementById(id);
-    if (b) b.style.display = (isAdmin && _tasksLoaded) ? '' : 'none';
-  });
-  // Offered only when there is actually something in view to finish.
-  var bulk = document.getElementById('trk-bulk');
-  var mine = rows.filter(function (t) { return t.status !== 'completed' && trkCan(t); }).length;
-  if (bulk) {
-    bulk.style.display = (_tasksLoaded && mine) ? '' : 'none';
-    bulk.textContent = 'Mark ' + mine + ' shown as done';
-  }
-  // Only worth offering while some of those actually have logs behind them.
-  var cu = document.getElementById('trk-catchup');
-  if (cu) {
-    var withLogs = catchUpRows().length;
-    cu.style.display = (_tasksLoaded && withLogs) ? '' : 'none';
-    cu.textContent = 'Close ' + withLogs + ' that already have logs';
+  if (scope) {
+    var n = allExpected().length;
+    scope.textContent = n ? n + ' expected in the last 26 weeks' : '';
   }
 }
 
@@ -2722,8 +2644,8 @@ function trkStackBar(c) {
     return n ? '<div style="width:' + ((n / c.total) * 100) + '%; background:' + col + ';"></div>' : '';
   };
   return '<div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--surface-0); gap:1px;">' +
-    seg(c.completed, TRK_STATUS.completed.color) +
-    seg(c.in_progress, TRK_STATUS.in_progress.color) +
+    seg(c.completed || c.done, TRK_STATUS.done.color) +
+    seg(c.in_progress, '#d9a93f') +
     seg(c.pending, TRK_STATUS.pending.color) +
     '</div>';
 }
@@ -2733,7 +2655,7 @@ function trkGroupBlock(label, c) {
     '<div style="display:flex; align-items:baseline; gap:8px; font-size:12.5px;">' +
       '<span style="font-weight:600;">' + esc(label) + '</span>' +
       '<span style="flex:1;"></span>' +
-      '<span style="color:var(--text-secondary);">' + c.completed + ' of ' + c.total + ' done</span>' +
+      '<span style="color:var(--text-secondary);">' + ((c.completed || c.done) || 0) + ' of ' + c.total + ' done</span>' +
       '<span style="color:' + (c.rate === null ? 'var(--text-muted)' : covColor(c.rate)) +
         '; font-weight:600; min-width:38px; text-align:right;">' +
         (c.rate === null ? '\u2014' : c.rate + '%') + '</span>' +
@@ -2760,7 +2682,10 @@ function renderTrkAnalytics(rows) {
     });
     // Least finished first: the point of a breakdown is to find the laggard.
     return Object.keys(m).map(function (k) {
-      return { key: k, name: nameOf(k), counts: trkCounts(m[k]) };
+      var c = trkCounts(m[k]);
+      return { key: k, name: nameOf(k),
+               counts: { total: c.total, done: c.done, completed: c.done,
+                         in_progress: 0, pending: c.pending, rate: c.rate } };
     }).sort(function (a, b) {
       var ra = a.counts.rate === null ? 101 : a.counts.rate;
       var rb = b.counts.rate === null ? 101 : b.counts.rate;
@@ -2780,272 +2705,58 @@ function renderTrkAnalytics(rows) {
   renderTrkTrend(rows);
 }
 
-// When reviews were FINISHED, by the day they were completed - not by the
-// date of the data. This is throughput: what the team actually closed.
+// Reviews done per day, by the DATE OF THE DATA. There is no stored
+// "finished at" any more - status is derived - so this shows how fully
+// each day was covered rather than when the clicking happened.
 function renderTrkTrend(rows) {
   var host = document.getElementById('trk-trend');
   if (!host) return;
-  var grain = (document.getElementById('trk-trend-grain') || {}).value || 'day';
-  var done = rows.filter(function (t) { return t.status === 'completed' && t.completed_at; });
-
-  if (!done.length) {
-    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">' +
-      'Nothing has been marked finished yet in this view.</div>';
+  if (!rows.length) {
+    host.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">Nothing to show for these filters.</div>';
     return;
   }
 
+  var grain = (document.getElementById('trk-trend-grain') || {}).value || 'day';
   var buckets = {};
-  done.forEach(function (t) {
-    var d = String(t.completed_at).slice(0, 10);
-    var k = grain === 'week' ? weekRange(d).from : d;
-    buckets[k] = (buckets[k] || 0) + 1;
+  rows.forEach(function (t) {
+    var k = grain === 'week' ? weekRange(t.obs_date).from : t.obs_date;
+    var b = buckets[k] || (buckets[k] = { done: 0, total: 0 });
+    b.total++;
+    if (t.status === 'done') b.done++;
   });
 
   var keys = Object.keys(buckets).sort();
-  // Fill the gaps so a quiet day reads as zero rather than disappearing.
   var step = grain === 'week' ? 7 : 1;
   var all = [], cur = keys[0], last = keys[keys.length - 1], guard = 0;
   while (cur <= last && guard++ < 400) { all.push(cur); cur = isoShift(cur, step); }
   if (all.length > 40) all = all.slice(-40);
 
-  var max = Math.max.apply(null, all.map(function (k) { return buckets[k] || 0; })) || 1;
+  var totalDone = rows.filter(function (t) { return t.status === 'done'; }).length;
   host.innerHTML =
     '<div style="display:flex; align-items:flex-end; gap:3px; height:96px; background:var(--surface-0); ' +
     'border:1px solid var(--border); border-radius:9px; padding:9px 10px 6px;">' +
     all.map(function (k) {
-      var n = buckets[k] || 0;
-      var h = n ? Math.max(4, (n / max) * 100) : 0;
+      var b = buckets[k];
+      if (!b) return '<div style="flex:1; max-width:52px;"></div>';
+      var pct = Math.round((b.done / b.total) * 100);
       var title = (grain === 'week' ? 'Week of ' : '') + plainDate(k) + ' \u2014 ' +
-                  n + ' finished';
+                  b.done + ' of ' + b.total + ' done';
       return '<div title="' + escAttr(title) + '" style="flex:1; max-width:52px; display:flex; ' +
         'flex-direction:column; justify-content:flex-end; height:100%; min-width:0;">' +
-        (n ? '<div style="height:' + h + '%; border-radius:3px 3px 0 0; background:var(--fb-green);"></div>'
-           : '<div style="height:3px; border-radius:2px; background:var(--border-strong);"></div>') +
+        (b.done
+          ? '<div style="height:' + Math.max(4, pct) + '%; border-radius:3px 3px 0 0; background:' +
+            covColor(pct) + ';"></div>'
+          : '<div style="height:3px; border-radius:2px; background:var(--border-strong);"></div>') +
         '</div>';
     }).join('') + '</div>' +
     '<div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--text-muted); margin-top:4px;">' +
       '<span>' + esc(plainDate(all[0])) + '</span>' +
-      '<span>' + done.length + ' finished \u00b7 peak ' + max + '</span>' +
+      '<span>' + totalDone + ' of ' + rows.length + ' done</span>' +
       '<span>' + esc(plainDate(all[all.length - 1])) + '</span></div>';
 }
 
-/* ---------- Progress tracker: changing things ---------- */
+/* ---------- Progress tracker: export ---------- */
 
-function trkMsg(msg, bad) {
-  var el = document.getElementById('trk-n-status-msg');
-  if (!el) return;
-  el.textContent = msg || '';
-  el.style.color = bad ? 'var(--text-danger)' : 'var(--text-secondary)';
-  if (msg) setTimeout(function () { if (el.textContent === msg) el.textContent = ''; }, 4500);
-}
-
-async function setTaskStatus(id, status) {
-  var t = _tasks.find(function (x) { return x.id === id; });
-  if (!t || !trkCan(t)) return;
-  var was = t.status;
-  if (was === status) return;
-  t.status = status;                    // optimistic: the board feels instant
-  renderTracker();
-  try {
-    const { error } = await sb.from('review_tasks').update({ status: status }).eq('id', id);
-    if (error) throw error;
-    await loadTasks();
-    if (typeof renderDateTable === 'function') renderDateTable();
-    toast(t.robot + ' \u00b7 ' + plainDate(t.obs_date) + ' \u2192 ' + TRK_STATUS[status].label);
-  } catch (e) {
-    t.status = was;                     // put it back; the server said no
-    renderTracker();
-    toast('Could not update: ' + (e && e.message ? e.message : 'unknown error'), true);
-  }
-}
-
-// Close the review for one bot-day, creating the task if nobody made one.
-// Called from the log form, so a reviewer finishes their work where they are
-// instead of remembering to visit another tab afterwards.
-async function completeBotDay(dateISO, robot, reviewerId) {
-  if (!sb || !_tasksLoaded || !dateISO || !robot) return false;
-  var mine = reviewerId || currentUserId();
-  var existing = _tasks.find(function (t) {
-    return t.obs_date === dateISO && t.robot === robot &&
-           (!t.reviewer_id || t.reviewer_id === mine);
-  });
-  try {
-    if (existing) {
-      if (existing.status === 'completed') return true;
-      const { error } = await sb.from('review_tasks')
-        .update({ status: 'completed' }).eq('id', existing.id);
-      if (error) throw error;
-    } else {
-      const { error } = await sb.from('review_tasks')
-        .insert({ obs_date: dateISO, robot: robot, reviewer_id: mine, status: 'completed' });
-      if (error) throw error;
-    }
-    await loadTasks();
-    return true;
-  } catch (e) {
-    console.warn('could not complete bot-day', e && e.message);
-    return false;
-  }
-}
-
-async function addTask() {
-  var date = (document.getElementById('trk-n-date') || {}).value || '';
-  var robot = (document.getElementById('trk-n-robot') || {}).value || '';
-  var reviewer = (document.getElementById('trk-n-reviewer') || {}).value || '';
-  var status = (document.getElementById('trk-n-status') || {}).value || 'pending';
-  if (!date || !robot) { trkMsg('Pick a date and a bot.', true); return; }
-
-  // Caught here as well as by the database, so the person gets a sentence
-  // rather than a constraint violation.
-  var dup = _tasks.find(function (t) {
-    return t.obs_date === date && t.robot === robot && String(t.reviewer_id || '') === reviewer;
-  });
-  if (dup) {
-    trkMsg(robot + ' on ' + plainDate(date) + ' is already on the board for ' +
-           (teamName(reviewer) || 'nobody') + '.', true);
-    return;
-  }
-
-  var btn = document.getElementById('trk-n-save');
-  setBusy(btn, true);
-  try {
-    const { error } = await sb.from('review_tasks').insert({
-      obs_date: date, robot: robot, reviewer_id: reviewer || null, status: status
-    });
-    if (error) throw error;
-    await loadTasks();
-    trkMsg('Added.');
-    toast(robot + ' \u00b7 ' + plainDate(date) + ' added to the board');
-  } catch (e) {
-    trkMsg('Could not add: ' + (e && e.message ? e.message : 'unknown error'), true);
-  } finally { setBusy(btn, false); }
-}
-
-// Finish every review currently in view that the person is allowed to move.
-// For catching up on a backlog; it never touches rows that are filtered out,
-// and it never touches someone else's work.
-// Which open reviews already have something logged for that bot-day?
-// Auto-complete only applies to logs saved from now on, so everything
-// logged before it was switched on sits Pending with its work already done.
-function catchUpRows() {
-  return trkFiltered().filter(function (t) {
-    return t.status !== 'completed' && trkCan(t) && trkHasObservations(t);
-  });
-}
-
-// A one-off tidy-up of that history. Deliberately NOT "mark everything":
-// only bot-days that actually have an entry are closed, so a review nobody
-// did is never claimed as done.
-async function catchUpFromLogs() {
-  var rows = catchUpRows();
-  if (!rows.length) { toast('No open reviews in this view already have logs.', true); return; }
-
-  if (!confirm('Close ' + rows.length + ' review' + (rows.length === 1 ? '' : 's') +
-               ' that already have an entry logged?\n\n' +
-               'Only bot-days with something logged are closed \u2014 ones with nothing ' +
-               'logged stay open. You can reopen any of them afterwards.')) return;
-
-  var btn = document.getElementById('trk-catchup');
-  setBusy(btn, true);
-  var failed = 0;
-  try {
-    for (var i = 0; i < rows.length; i++) {
-      const { error } = await sb.from('review_tasks')
-        .update({ status: 'completed' }).eq('id', rows[i].id);
-      if (error) failed++;
-    }
-    await loadTasks();
-    toast(failed ? (rows.length - failed) + ' closed, ' + failed + ' could not be changed'
-                 : rows.length + ' review' + (rows.length === 1 ? '' : 's') + ' closed',
-          !!failed);
-  } catch (e) {
-    toast('Could not close them: ' + (e && e.message ? e.message : 'unknown error'), true);
-  } finally { setBusy(btn, false); }
-}
-
-async function bulkComplete() {
-  var rows = trkFiltered().filter(function (t) { return t.status !== 'completed' && trkCan(t); });
-  if (!rows.length) { toast('Nothing in this view is yours to finish.', true); return; }
-
-  var byBot = {};
-  rows.forEach(function (t) { byBot[t.robot] = (byBot[t.robot] || 0) + 1; });
-  var preview = Object.keys(byBot).sort().slice(0, 6)
-    .map(function (b) { return b + ' \u00d7' + byBot[b]; }).join(', ');
-
-  if (!confirm('Mark ' + rows.length + ' review' + (rows.length === 1 ? '' : 's') + ' as done?\n\n' +
-               preview + (Object.keys(byBot).length > 6 ? ', \u2026' : '') +
-               '\n\nOnly the rows showing right now are affected. You can reopen any of them afterwards.')) return;
-
-  var btn = document.getElementById('trk-bulk');
-  setBusy(btn, true);
-  var failed = 0;
-  try {
-    for (var i = 0; i < rows.length; i++) {
-      const { error } = await sb.from('review_tasks')
-        .update({ status: 'completed' }).eq('id', rows[i].id);
-      if (error) failed++;
-    }
-    await loadTasks();
-    toast(failed
-      ? (rows.length - failed) + ' marked done, ' + failed + ' could not be changed'
-      : rows.length + ' review' + (rows.length === 1 ? '' : 's') + ' marked done', !!failed);
-  } catch (e) {
-    toast('Could not finish them: ' + (e && e.message ? e.message : 'unknown error'), true);
-  } finally { setBusy(btn, false); }
-}
-
-async function deleteTask(id) {
-  var t = _tasks.find(function (x) { return x.id === id; });
-  if (!t) return;
-  if (!confirm('Remove this review from the board?\n\n' + t.robot + ' \u00b7 ' + plainDate(t.obs_date) +
-               ' \u00b7 ' + (teamName(t.reviewer_id) || 'unassigned') +
-               '\n\nObservations already logged are not touched.')) return;
-  try {
-    const { error } = await sb.from('review_tasks').delete().eq('id', id);
-    if (error) throw error;
-    await loadTasks();
-    toast('Removed from the board');
-  } catch (e) { toast('Could not remove: ' + (e && e.message ? e.message : 'unknown error'), true); }
-}
-
-// Fill the board from who owns which bot, for a date range. This is how a
-// week of rows gets created without typing each one. It only ADDS what is
-// missing - an existing row keeps whatever status it already has.
-async function generateTasks() {
-  if (currentRole !== 'admin') return;
-  if (!_assignments.length) {
-    toast('Assign robots to people first, under User Management.', true);
-    return;
-  }
-  var to = (typeof latestReviewableDate === 'function') ? latestReviewableDate() : localToday();
-  var from = isoShift(to, -6);
-  var obl = obligationsIn(from, to);
-  if (!obl.length) { toast('Nothing was assigned in that period.', true); return; }
-
-  var have = {};
-  _tasks.forEach(function (t) { have[t.obs_date + '|' + t.robot + '|' + (t.reviewer_id || '')] = true; });
-  var fresh = obl.filter(function (o) { return !have[o.date + '|' + o.robot + '|' + o.userId]; });
-
-  if (!fresh.length) { toast('The board is already up to date for ' + plainDate(from) + '\u2013' + plainDate(to)); return; }
-  if (!confirm('Add ' + fresh.length + ' review' + (fresh.length === 1 ? '' : 's') + ' to the board?\n\n' +
-               plainDate(from) + ' \u2013 ' + plainDate(to) +
-               '\n\nThey start as Pending. Rows already on the board keep their current status.')) return;
-
-  var btn = document.getElementById('trk-generate');
-  setBusy(btn, true);
-  try {
-    const { error } = await sb.from('review_tasks').insert(fresh.map(function (o) {
-      return { obs_date: o.date, robot: o.robot, reviewer_id: o.userId, status: 'pending' };
-    }));
-    if (error) throw error;
-    await loadTasks();
-    toast(fresh.length + ' review' + (fresh.length === 1 ? '' : 's') + ' added');
-  } catch (e) {
-    toast('Could not create them: ' + (e && e.message ? e.message : 'unknown error'), true);
-  } finally { setBusy(btn, false); }
-}
-
-// CSV of exactly what is on screen, filters and sort included.
 function exportTrackerCSV() {
   var rows = trkFiltered();
   if (!rows.length) { toast('Nothing to export in this view.', true); return; }
@@ -3055,11 +2766,10 @@ function exportTrackerCSV() {
     if (/^[=+\-@]/.test(t)) t = "'" + t;
     return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
   };
-  var head = ['Date', 'HBA reviewer', 'Bot', 'Status', 'Completed', 'Last updated', 'Notes'];
+  var head = ['Date', 'HBA reviewer', 'Bot', 'Status'];
   var body = rows.map(function (t) {
     return [t.obs_date, teamName(t.reviewer_id) || 'Unassigned', t.robot,
-            TRK_STATUS[t.status].label, t.status === 'completed' ? 'Yes' : 'No',
-            (t.updated_at || '').replace('T', ' ').slice(0, 16), t.notes || ''].map(cell).join(',');
+            t.status === 'done' ? 'Done' : 'Pending'].map(cell).join(',');
   });
   var csv = head.map(cell).join(',') + '\n' + body.join('\n');
 
@@ -3418,11 +3128,11 @@ function focusLogsOnDate(dateISO, bot) {
    bot-day with no review task says "Not tracked" rather than being
    given a status it never had.
 
-   Review status and upload status are kept strictly apart:
-     review  - what a PERSON said about their progress (review_tasks)
-     upload  - what the DATA shows about what arrived (observations)
-   They answer different questions and must never be derived from each
-   other. A reviewer can finish a review of a day where nothing arrived.
+   Review status and upload status still answer different questions:
+     review  - did the ASSIGNED reviewer log anything for this bot-day?
+     upload  - what did the data show: on time, late, none, or nothing at all?
+   A bot-day nobody is responsible for has no review status, because no
+   review was ever expected.
    ===================================================================== */
 
 // Four states, not three. "The reviewer looked and nothing had arrived" and
@@ -3440,7 +3150,7 @@ const UPLOAD_STATUS = {
              hint: 'Nobody has logged anything for this bot on this date.' }
 };
 const UPLOAD_ORDER = { missing: 0, nodata: 1, late: 2, ontime: 3 };
-const REVIEW_ORDER = { untracked: 0, pending: 1, in_progress: 2, completed: 3 };
+const REVIEW_ORDER = { untracked: 0, pending: 1, done: 2 };
 
 function botDayRows(from, to) {
   var seen = {}, rows = [];
@@ -3465,14 +3175,11 @@ function botDayRows(from, to) {
     if (!r.reviewerId) r.reviewerId = o.userId;
   });
 
-  // 2. Review tasks: the only source of review status.
-  _tasks.forEach(function (t) {
-    if (!inRange(t.obs_date)) return;
+  // 2. Review status, derived from who was responsible and what they logged.
+  expectedReviews(from, to).forEach(function (t) {
     var r = slot(t.obs_date, t.robot);
     r.reviewStatus = t.status;
-    r.taskId = t.id;
-    r.updatedAt = t.updated_at || null;
-    if (t.reviewer_id) r.reviewerId = t.reviewer_id;
+    r.reviewerId = t.reviewer_id;
   });
 
   // 3. Observations: the only source of upload status.
@@ -3508,8 +3215,8 @@ function badge(m, label) {
 }
 function reviewBadge(status) {
   if (status === 'untracked') {
-    return '<span title="No review task exists for this bot-day yet. Create one on the Progress Tracker tab." ' +
-      'style="font-size:11px; color:var(--text-muted);">Not tracked</span>';
+    return '<span title="Nobody is responsible for this bot on this date, so no review was expected. Set an owner under User Management." ' +
+      'style="font-size:11px; color:var(--text-muted);">Not assigned</span>';
   }
   return badge(TRK_STATUS[status] || TRK_STATUS.pending);
 }
@@ -3556,7 +3263,7 @@ function dtRows() {
 
 function dtCounts(rows) {
   var c = {
-    total: rows.length, completed: 0, in_progress: 0, pending: 0, untracked: 0,
+    total: rows.length, done: 0, pending: 0, untracked: 0,
     late: 0, nodata: 0, missing: 0, ontime: 0
   };
   rows.forEach(function (r) {
@@ -3567,7 +3274,9 @@ function dtCounts(rows) {
   // not an unfinished review, it is a review nobody has created yet.
   var tracked = c.total - c.untracked;
   c.tracked = tracked;
-  c.rate = tracked ? Math.round((c.completed / tracked) * 100) : null;
+  c.completed = c.done;                 // the breakdown blocks read this name
+  c.in_progress = 0;
+  c.rate = tracked ? Math.round((c.done / tracked) * 100) : null;
   return c;
 }
 
@@ -3584,15 +3293,14 @@ function renderDtCards(rows) {
   };
   host.innerHTML =
     tile('ASSIGNED', c.total, 'var(--text-primary)', 'bot-days in view') +
-    tile('COMPLETED', c.completed, TRK_STATUS.completed.color) +
-    tile('IN PROGRESS', c.in_progress, TRK_STATUS.in_progress.color) +
+    tile('DONE', c.done, TRK_STATUS.done.color) +
     tile('PENDING', c.pending, TRK_STATUS.pending.color) +
     tile('LATE UPLOADS', c.late, UPLOAD_STATUS.late.color) +
     tile('NO DATA', c.nodata, UPLOAD_STATUS.nodata.color, 'checked, none arrived') +
     tile('NOT LOGGED', c.missing, UPLOAD_STATUS.missing.color, 'nobody looked yet') +
     tile('COMPLETION', c.rate === null ? '\u2014' : c.rate + '%',
          c.rate === null ? 'var(--text-muted)' : covColor(c.rate),
-         c.untracked ? c.untracked + ' not tracked yet' : (c.tracked ? c.completed + ' of ' + c.tracked : ''));
+         c.untracked ? c.untracked + ' not assigned' : (c.tracked ? c.done + ' of ' + c.tracked : ''));
 }
 
 function renderDtTable(rows) {
@@ -3720,7 +3428,8 @@ function exportDateTableCSV() {
   var head = ['Date', 'HBA reviewer', 'Bot', 'Review status', 'Upload status', 'Observations', 'Last updated'];
   var lines = rows.map(function (r) {
     return [r.date, teamName(r.reviewerId) || '', r.robot,
-            r.reviewStatus === 'untracked' ? 'Not tracked' : TRK_STATUS[r.reviewStatus].label,
+            r.reviewStatus === 'untracked' ? 'Not assigned'
+              : (r.reviewStatus === 'done' ? 'Done' : 'Pending'),
             UPLOAD_STATUS[r.uploadStatus].label, r.obsCount,
             (r.updatedAt || '').replace('T', ' ').slice(0, 16)].map(cell).join(',');
   });
@@ -4228,6 +3937,7 @@ function wireRowActions(container) {
       renderProgBotOptions();
       render();
       renderRecent();
+      refreshTeamViews();      // the review may have just gone back to Pending
     });
   });
 }
@@ -4475,22 +4185,6 @@ document.getElementById('tab-users').addEventListener('click', function () {
     });
   });
 
-  var addT = document.getElementById('trk-add-toggle');
-  if (addT) addT.addEventListener('click', function () {
-    var box = document.getElementById('trk-add');
-    if (!box) return;
-    var open = box.style.display !== 'none';
-    box.style.display = open ? 'none' : 'block';
-    addT.textContent = open ? 'Add review' : 'Close';
-  });
-  var save = document.getElementById('trk-n-save');
-  if (save) save.addEventListener('click', addTask);
-  var gen = document.getElementById('trk-generate');
-  if (gen) gen.addEventListener('click', generateTasks);
-  var cuBtn = document.getElementById('trk-catchup');
-  if (cuBtn) cuBtn.addEventListener('click', catchUpFromLogs);
-  var bulkBtn = document.getElementById('trk-bulk');
-  if (bulkBtn) bulkBtn.addEventListener('click', bulkComplete);
   var exp = document.getElementById('trk-export');
   if (exp) exp.addEventListener('click', exportTrackerCSV);
   var grain = document.getElementById('trk-trend-grain');
@@ -4586,21 +4280,6 @@ function renderDupNotice() {
   });
 }
 
-// The tick means different things in the two modes, so it is labelled from
-// the setting rather than hard-coded in the markup.
-function applyDoneMode() {
-  var label = document.getElementById('f-done-label');
-  var note = document.getElementById('f-done-note');
-  if (!label || !note) return;
-  if (AUTO_COMPLETE_ON_LOG) {
-    label.textContent = 'I am not finished with this bot and date yet';
-    note.textContent = '(leave unticked and saving marks the review done)';
-  } else {
-    label.textContent = 'I am finished reviewing this bot for this date';
-    note.textContent = '(marks it done on the Progress Tracker)';
-  }
-}
-
 function resetForm() {
   taskMS.clear();
   issueMS.clear();
@@ -4609,8 +4288,6 @@ function resetForm() {
   document.getElementById('f-links').value = '';
   document.getElementById('f-nodata').checked = false;
   document.getElementById('f-late').checked = false;
-  document.getElementById('f-done').checked = false;
-  applyDoneMode();
   document.getElementById('f-detail-fields').style.display = 'block';
   document.getElementById('f-robot-other').style.display = 'none';
   document.getElementById('f-robot-other').value = '';
@@ -4641,11 +4318,6 @@ function startEdit(id) {
   }
 
   document.getElementById('f-late').checked = !!e.lateUpload;
-  // Editing an old entry should not re-close a review the reviewer may have
-  // deliberately reopened, so start from "keep it as it is".
-  var doneBox = document.getElementById('f-done');
-  if (doneBox) doneBox.checked = AUTO_COMPLETE_ON_LOG;
-  applyDoneMode();
   const nd = document.getElementById('f-nodata');
   nd.checked = !!e.noData || issueList(e).includes('nodata');
   document.getElementById('f-detail-fields').style.display = nd.checked ? 'none' : 'block';
@@ -4681,15 +4353,6 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   const robot = robotSel === '__other' ? document.getElementById('f-robot-other').value.trim() : robotSel;
   const noData = document.getElementById('f-nodata').checked;
   const lateUpload = document.getElementById('f-late').checked;
-  // "No data" is definitive either way: the reviewer looked, nothing was
-  // there, and there is nothing to come back to.
-  const noDataChecked = document.getElementById('f-nodata').checked;
-  const tick = document.getElementById('f-done').checked;
-  // With auto-complete on, the tick means the OPPOSITE: keep this open.
-  // "No data" closes the day only when it is being LOGGED, never when an
-  // old entry is edited - somebody may have reopened that review on purpose.
-  const markDone = (!editingId && noDataChecked) ||
-    (AUTO_COMPLETE_ON_LOG ? !tick : tick);
   const task = noData ? [] : taskMS.getValues();
   let issue = noData ? ['nodata'] : issueMS.getValues();
   const severity = noData ? '' : document.getElementById('f-severity').value.trim();
@@ -4762,19 +4425,17 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   status.textContent = wasEditing ? 'Updated.' : 'Saved.';
   setTimeout(() => status.textContent = '', 2000);
 
-  var closed = false;
-  if (markDone) closed = await completeBotDay(date, robot);
+  // Status is derived, so saving the observation IS the status change.
+  // Everything downstream just needs rebuilding from the new entries.
+  refreshTeamViews();
 
   toast((wasEditing ? 'Observation updated' : 'Observation saved') +
         ' \u00b7 ' + robot + ' \u00b7 ' + date +
-        (closed ? ' \u2014 review marked done'
-                : (AUTO_COMPLETE_ON_LOG && !noDataChecked ? ' \u2014 left open' : '')));
+        ' \u2014 review marked done');
   flashRow(savedId);
 });
 
 // Keep the "already logged" strip in step with the date / robot pickers.
-applyDoneMode();
-
 ['f-date', 'f-robot', 'f-robot-other'].forEach(function (id) {
   var el = document.getElementById(id);
   if (!el) return;
@@ -6614,7 +6275,7 @@ function runIntro() {
       if (playIntro) { playIntro = false; intro = runIntro(); overlay.style.display = 'none'; }
       var loadP = loadEntries();
       if (intro) { await Promise.all([intro.done, loadP]); } else { await loadP; }
-      appReady = true; showApp(); applyRoleUI(); loadTeam(); loadAssignments(); loadTasks(); loadOptions(); loadReportHistory(); loadAuditLog();
+      appReady = true; showApp(); applyRoleUI(); loadTeam(); loadAssignments(); loadOptions(); loadReportHistory(); loadAuditLog();
       if (currentRole === 'admin') loadUsers();
       if (intro) await intro.dismiss();
       maybeOfferMigration();
