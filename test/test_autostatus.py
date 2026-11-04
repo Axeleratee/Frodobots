@@ -39,8 +39,12 @@ with sync_playwright() as pw:
     chk("two_logs_are_one_review",
         pg.evaluate("""([d]) => allExpected()
             .filter(r => r.obs_date === d && r.robot === 'Alpha').length""", [D[5]]) == 1)
-    chk("someone_elses_log_does_not_close_it", st(pg, D[4], "Charlie", H.CRIS) == "pending",
-        "| boss logged it, but it is cris's assignment")
+    chk("someone_elses_log_still_closes_it", st(pg, D[4], "Charlie", H.CRIS) == "done",
+        "| boss did the work, so the data is reviewed")
+    chk("standin_is_named", pg.evaluate("""([d]) => {
+        const r = allExpected().find(x => x.obs_date === d && x.robot === 'Charlie');
+        return r && r.coveredBy; }""", [D[4]]) == "boss",
+        "| and it says who actually did it")
     chk("other_bots_untouched", st(pg, D[5], "Charlie", H.CRIS) == "pending",
         "| one observation must not mark every bot done")
     chk("pending_comes_from_assignments",
@@ -63,14 +67,19 @@ with sync_playwright() as pw:
     pg.click("#f-task .ms-opt:has-text('sweep floor')")
     pg.click("#card-log >> text=Log an observation"); pg.wait_for_timeout(250)
     pg.click("#btn-save"); pg.wait_for_timeout(1300)
-    chk("save_flips_to_done", st(pg, D[6], "Charlie", H.ADMIN) is None
-        and st(pg, D[6], "Charlie", H.CRIS) == "pending", "| saved as boss, not cris's")
-    # log it as the owner this time
+    chk("save_flips_to_done", st(pg, D[6], "Charlie", H.CRIS) == "done",
+        "| boss covered it, so cris's review is done")
+    chk("save_marks_it_as_covered", pg.evaluate("""([d]) => {
+        const r = allExpected().find(x => x.obs_date === d && x.robot === 'Charlie');
+        return r && r.coveredBy; }""", [D[6]]) == "boss")
+    # the owner logging it too clears the stand-in note
     pg.evaluate("""([d]) => {
         const e = entries.find(x => x.date === d && x.robot === 'Charlie');
         e._by = 'uid-cris@robotqa.local'; refreshTeamViews(); }""", [D[6]])
     pg.wait_for_timeout(500)
-    chk("owners_log_flips_to_done", st(pg, D[6], "Charlie", H.CRIS) == "done")
+    chk("owners_log_clears_the_note", pg.evaluate("""([d]) => {
+        const r = allExpected().find(x => x.obs_date === d && x.robot === 'Charlie');
+        return r && r.coveredBy; }""", [D[6]]) is None)
 
     # ---- live sync: no refresh needed ----
     pg.click("#tab-tracker"); pg.wait_for_timeout(900)

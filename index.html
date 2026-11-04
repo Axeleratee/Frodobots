@@ -2440,31 +2440,50 @@ const TRK_STATUS = {
 };
 const TRK_ORDER = { pending: 0, done: 1 };
 
-// "date|robot|who" for every observation, keyed by the person who logged
-// it. Older rows carry only a name, so they are indexed both ways.
+// Per bot-day: who logged something there. Older rows carry only a name,
+// so both the id and the name are recorded.
 function loggedIndex() {
   var ix = {};
   entries.forEach(function (e) {
     if (!e.robot || !e.date) return;
-    if (e._by) ix[e.date + '|' + e.robot + '|' + e._by] = true;
+    var k = e.date + '|' + e.robot;
+    var c = ix[k] || (ix[k] = { ids: {}, names: {} });
+    if (e._by) c.ids[e._by] = true;
     var n = observerName(e);
-    if (n) ix[e.date + '|' + e.robot + '|name:' + n] = true;
+    if (n) c.names[n] = true;
   });
   return ix;
 }
 
 // One review per (date, robot, reviewer) that somebody was responsible for.
-// Several observations for one assignment still count as one review, and a
-// log by somebody else does not close another person's assignment.
+// Several observations for one assignment still count as one review.
+//
+// A bot-day reviewed by somebody OTHER than its owner is Done - the data
+// really was reviewed, and showing Pending would send you chasing work
+// that is already finished. Who actually did it is carried alongside, so
+// a stand-in is visible instead of silently absorbed.
 function expectedReviews(from, to) {
   var ix = loggedIndex();
   return obligationsIn(from, to).map(function (o) {
-    var done = ix[o.date + '|' + o.robot + '|' + o.userId] ||
-               ix[o.date + '|' + o.robot + '|name:' + (teamName(o.userId) || '\u0000')];
+    var c = ix[o.date + '|' + o.robot];
+    var mine = !!(c && (c.ids[o.userId] || c.names[teamName(o.userId) || '\u0000']));
+    var anyone = !!c;
+    var others = [];
+    if (c && !mine) {
+      Object.keys(c.ids).forEach(function (id) {
+        var n = teamName(id);
+        if (n && others.indexOf(n) === -1) others.push(n);
+      });
+      Object.keys(c.names).forEach(function (n) {
+        if (others.indexOf(n) === -1) others.push(n);
+      });
+    }
     return {
       id: o.date + '|' + o.robot + '|' + o.userId,
       obs_date: o.date, robot: o.robot, reviewer_id: o.userId,
-      status: done ? 'done' : 'pending'
+      status: anyone ? 'done' : 'pending',
+      ownWork: mine,
+      coveredBy: (!mine && others.length) ? others.sort().join(', ') : null
     };
   });
 }
@@ -2533,8 +2552,11 @@ function trkFiltered() {
 }
 
 function trkCounts(rows) {
-  var c = { total: rows.length, done: 0, pending: 0 };
-  rows.forEach(function (t) { c[t.status]++; });
+  var c = { total: rows.length, done: 0, pending: 0, covered: 0 };
+  rows.forEach(function (t) {
+    c[t.status]++;
+    if (t.coveredBy) c.covered++;
+  });
   c.rate = c.total ? Math.round((c.done / c.total) * 100) : null;
   return c;
 }
@@ -2656,7 +2678,9 @@ function renderTrkTable(rows) {
       '<td style="padding:7px 8px; white-space:nowrap;">' + esc(plainDate(t.obs_date)) + '</td>' +
       '<td style="padding:7px 8px;">' + esc(teamName(t.reviewer_id) || '\u2014') + '</td>' +
       '<td style="padding:7px 8px; font-weight:600;">' + esc(t.robot) + '</td>' +
-      '<td style="padding:7px 8px;">' + trkPill(t.status) + '</td>' +
+      '<td style="padding:7px 8px;">' + trkPill(t.status) +
+        (t.coveredBy ? ' <span class="umark" title="Logged by somebody other than the assigned reviewer.">' +
+          'by ' + esc(t.coveredBy) + '</span>' : '') + '</td>' +
       '</tr>';
   }).join('');
 
@@ -3227,6 +3251,7 @@ function botDayRows(from, to) {
     var r = slot(t.obs_date, t.robot);
     r.reviewStatus = t.status;
     r.reviewerId = t.reviewer_id;
+    r.coveredBy = t.coveredBy || null;
   });
 
   // 3. Observations: the only source of upload status.
@@ -3302,12 +3327,13 @@ function dtRows() {
 
 function dtCounts(rows) {
   var c = {
-    total: rows.length, done: 0, pending: 0, untracked: 0,
+    total: rows.length, done: 0, pending: 0, untracked: 0, covered: 0,
     late: 0, nodata: 0, missing: 0, ontime: 0
   };
   rows.forEach(function (r) {
     c[r.reviewStatus]++;
     c[r.uploadStatus]++;
+    if (r.coveredBy) c.covered++;
   });
   // Only tracked rows can have a completion rate: an untracked bot-day is
   // not an unfinished review, it is a review nobody has created yet.
@@ -3360,6 +3386,7 @@ function renderDtCards(rows) {
       item('Late uploads', c.late, UPLOAD_STATUS.late.color) +
       item('Nothing arrived', c.nodata, UPLOAD_STATUS.nodata.color) +
       item('Missing evaluations', c.missing, UPLOAD_STATUS.missing.color) +
+      (c.covered ? item('Covered by a teammate', c.covered, 'var(--text-secondary)') : '') +
       (c.untracked ? item('Not assigned', c.untracked, 'var(--text-muted)') : '');
   }
 }
@@ -3415,7 +3442,9 @@ function renderDtTable(rows) {
   body.innerHTML = rows.map(function (r) {
     return '<tr class="dt-row" data-date="' + escAttr(r.date) + '" data-bot="' + escAttr(r.robot) + '">' +
       '<td style="white-space:nowrap; color:var(--text-secondary);">' + esc(plainDate(r.date)) + '</td>' +
-      '<td>' + esc(teamName(r.reviewerId) || '\u2014') + '</td>' +
+      '<td>' + esc(teamName(r.reviewerId) || '\u2014') +
+        (r.coveredBy ? ' <span class="umark" title="Logged by somebody other than the assigned reviewer.">' +
+          '\u2192 ' + esc(r.coveredBy) + '</span>' : '') + '</td>' +
       '<td style="font-weight:600;">' + esc(r.robot) + uploadMark(r.uploadStatus) + '</td>' +
       '<td>' + statusBadge(r.reviewStatus) + '</td>' +
       '</tr>';
