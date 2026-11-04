@@ -964,7 +964,10 @@ html, body {
           <div id="ops-backlog" style="display:flex; flex-direction:column; gap:5px; max-height:296px; overflow:auto;"></div>
         </div>
         <div>
-          <div style="font-size:13px; font-weight:600; margin-bottom:9px;">Each person &middot; last 7 days</div>
+          <div style="font-size:13px; font-weight:600; margin-bottom:2px;">Each person &middot; last 7 days</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-bottom:9px;">
+            Solid is their own work; the pale part was covered by a teammate.
+          </div>
           <div id="ops-rail" style="display:flex; flex-direction:column; gap:9px;"></div>
         </div>
       </div>
@@ -2340,26 +2343,36 @@ function renderOpsRail() {
   }
 
   host.innerHTML = active.map(function (r, i) {
-    var pct = r.coverage;
+    // This bar answers "did THIS person do their own assigned work", which
+    // is not the same question as "was the data reviewed". A day a teammate
+    // covered is reviewed, so the bar reaches it - but in a paler tone, so
+    // it never reads as this person's own output.
+    var pct = r.coverage;                                   // own work
+    var reviewed = r.assigned ? Math.round(((r.done + r.coveredByOther) / r.assigned) * 100) : null;
     var col = covColor(pct);
-    var w = pct === null ? 0 : pct;
-    // The denominator is always on screen: "3/5" is actionable, "60%" alone
-    // hides whether that is three days or thirty.
+    var own = pct === null ? 0 : pct;
+    var cov = reviewed === null ? 0 : Math.max(0, reviewed - own);
+
     var extra = [];
-    if (r.coveredByOther) extra.push(r.coveredByOther + ' done by a teammate');
     if (r.turnaround !== null) extra.push(plainLag(r.turnaround).replace('Usually reviewed', 'usually'));
+
     return '<div>' +
       '<div style="display:flex; align-items:baseline; gap:7px; font-size:12.5px;">' +
         '<span style="color:var(--text-muted); width:13px;">' + (i + 1) + '</span>' +
         '<span style="font-weight:600;">' + esc(r.username) + '</span>' +
         '<span style="flex:1;"></span>' +
-        '<span style="color:var(--text-secondary);">' + r.done + ' of ' + r.assigned + '</span>' +
+        '<span style="color:var(--text-secondary);">' + r.done + ' of ' + r.assigned +
+          (r.coveredByOther ? '<span style="color:var(--text-muted);"> +' + r.coveredByOther + ' covered</span>' : '') +
+        '</span>' +
         '<span style="color:' + col + '; font-weight:600; min-width:38px; text-align:right;">' +
           (pct === null ? '\u2014' : pct + '%') + '</span>' +
       '</div>' +
-      '<div style="height:5px; border-radius:3px; background:var(--surface-0); margin:4px 0 0 20px; overflow:hidden;">' +
-        '<div style="height:100%; width:' + w + '%; background:' + col + '; border-radius:3px; ' +
-        'transition:width var(--dur-page) var(--ease);"></div></div>' +
+      '<div style="display:flex; height:5px; border-radius:3px; background:var(--surface-0); margin:4px 0 0 20px; overflow:hidden;">' +
+        '<div style="width:' + own + '%; background:' + col + '; ' +
+          'transition:width var(--dur-page) var(--ease);"></div>' +
+        (cov ? '<div title="Reviewed by a teammate, not by ' + escAttr(r.username) + '" ' +
+               'style="width:' + cov + '%; background:' + col + '; opacity:.32;"></div>' : '') +
+      '</div>' +
       (extra.length ? '<div style="font-size:11px; color:var(--text-muted); margin:3px 0 0 20px;">' +
         esc(extra.join(' \u00b7 ')) + '</div>' : '') +
       '</div>';
