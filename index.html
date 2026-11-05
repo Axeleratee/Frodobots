@@ -481,6 +481,11 @@ html, body {
 
 /* ---- sliding tab indicator (only once JS has placed it) ---- */
 .fb-tabs { position: relative; }
+/* On a narrow screen the tab row scrolls inside itself instead of
+   pushing the whole page sideways. */
+.fb-tabs { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.fb-tabs::-webkit-scrollbar { display: none; }
+.fb-tabs > .fb-tab { flex-shrink: 0; white-space: nowrap; }
 .fb-tab-ind {
   position: absolute; top: 5px; left: 0; height: calc(100% - 10px);
   border-radius: 8px; background: var(--fill-primary);
@@ -541,6 +546,69 @@ html, body {
 .fb-toast.fb-toast-on { transform: translateX(-50%) translateY(0); opacity: 1; }
 .fb-toast .fb-toast-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fb-green); flex-shrink: 0; }
 .fb-toast.is-bad .fb-toast-dot { background: var(--text-danger); }
+
+/* Folding panels. The body animates its row from 0fr to 1fr, so the
+   height follows the real content without measuring it in JS. Folded, it
+   is also visibility:hidden, which keeps its controls out of the tab order
+   and out of screen readers; the visibility flip waits for the close
+   animation to finish, and happens at once when opening. */
+.fb-app .fold {
+  display: grid; grid-template-rows: 0fr; grid-template-columns: minmax(0, 1fr); visibility: hidden;
+  transition: grid-template-rows var(--dur-reveal) var(--ease), visibility 0s linear var(--dur-reveal);
+}
+.fb-app .fold.is-open {
+  grid-template-rows: 1fr; visibility: visible;
+  transition: grid-template-rows var(--dur-reveal) var(--ease), visibility 0s linear 0s;
+}
+.fb-app .fold > .fold-inner { min-height: 0; min-width: 0; overflow: hidden; }
+.fb-app .fold.is-open.is-settled > .fold-inner { overflow: visible; }
+.fb-app .fold-pad { padding-top: 16px; }
+
+.fb-app .fold-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fb-app .fold-head {
+  display: flex; align-items: center; gap: 11px; flex: 1; min-width: 220px;
+  text-align: left; background: transparent; border: none; padding: 2px 0;
+  cursor: pointer; border-radius: 8px;
+}
+.fb-app .fold-head:focus-visible { outline: 2px solid var(--border-strong); outline-offset: 4px; }
+.fb-app .fold-caret {
+  width: 15px; height: 15px; color: var(--text-muted); flex-shrink: 0;
+  transition: transform var(--dur-reveal) var(--ease), color var(--dur-micro) var(--ease);
+}
+.fb-app .fold-head:hover .fold-caret { color: var(--text-primary); }
+.fb-app .fold-head[aria-expanded="true"] .fold-caret { transform: rotate(90deg); }
+.fb-app .fold-title { display: block; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--text-primary); }
+.fb-app .fold-sub { display: block; font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; }
+
+/* Compact tiles for secondary sections: same look, less height. */
+.fb-app .mtiles-compact .mtile { padding: 10px 13px 11px; }
+.fb-app .mtiles-compact .mtile-head { margin-bottom: 5px; font-size: 12px; }
+.fb-app .mtiles-compact .mtile-value { font-size: 21px; }
+
+/* The observations table scrolls inside its card, header pinned. */
+.fb-app #table-wrap { max-height: 560px; overflow: auto; }
+.fb-app #table-wrap thead th { position: sticky; top: 0; background: var(--surface-2); z-index: 1; }
+.fb-app .obs-more {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--text-muted); padding-top: 12px;
+}
+
+/* The toggle is a header, not a button: no fill on hover, press or focus. */
+.fb-app button.fold-head,
+.fb-app button.fold-head:hover,
+.fb-app button.fold-head:active,
+.fb-app button.fold-head:focus { background: transparent; box-shadow: none; transform: none; }
+
+@media (max-width: 640px) {
+  .fb-app .fold-title { font-size: 15.5px; }
+  .fb-app .fold-sub { display: none; }
+  .fb-app .fold-head { min-width: 0; }
+  .fb-app #table-wrap { max-height: 70vh; }
+  .fb-app #lb-cards { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 7px !important; }
+  .fb-app .mtiles-compact .mtile { padding: 9px 10px; }
+  .fb-app .mtiles-compact .mtile-head { font-size: 11px; }
+  .fb-app .mtiles-compact .mtile-sub { display: none; }
+}
 
 /* Reduced motion is a hard stop, not a slowdown: no transitions, no
    keyframes, and nothing that starts without being asked. */
@@ -1194,77 +1262,23 @@ html, body {
     </div>
   </div>
 
-  <div class="fb-card">
-    <div style="display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
-      <button id="btn-back" style="font-size:12.5px; padding:6px 12px;"><i class="ti ti-arrow-left" style="font-size:14px; vertical-align:-2px;" aria-hidden="true"></i> Back</button>
-      <div style="font-size:15px; font-weight:500; margin-right:auto;">Logged observations</div>
-    </div>
-    <div style="display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
-      <input type="date" id="filter-from" title="From date" style="width:auto;">
-      <input type="date" id="filter-to" title="To date" style="width:auto;">
-      <select id="filter-robot" style="min-width:130px; width:auto;"><option value="">All robots</option></select>
-      <select id="filter-task" style="min-width:130px; width:auto;"><option value="">All tasks</option></select>
-      <select id="filter-issue" style="min-width:150px; width:auto;">
-        <option value="">All issue types</option>
-        <option value="none">No error</option>
-        <option value="idle_hand">Idle hand syndrome</option>
-        <option value="off_framing">Off framing</option>
-        <option value="improper_butler">Improper butler</option>
-        <option value="unnatural_pathing">Unnatural pathing</option>
-        <option value="crab_walking">Crab walking</option>
-        <option value="foot_shuffling">Foot shuffling</option>
-        <option value="camera_blur">Camera blur</option>
-        <option value="other">Other</option>
-        <option value="nodata">No data (not evaluated)</option>
-      </select>
-      <select id="filter-late" style="min-width:140px; width:auto;">
-        <option value="">On-time &amp; late</option>
-        <option value="late">Late uploads only</option>
-        <option value="ontime">On-time only</option>
-      </select>
-      <select id="filter-user" style="min-width:130px; width:auto;"><option value="">All loggers</option></select>
-      <input type="text" id="filter-search" placeholder="Search task/notes…" style="min-width:160px;">
-      <button id="filter-clear" style="font-size:12px; padding:6px 10px;">Clear</button>
-    </div>
-    <div id="table-wrap" style="overflow-x:auto;">
-      <table style="width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed;">
-        <thead>
-          <tr style="border-bottom:0.5px solid var(--border);">
-            <th style="text-align:left; padding:6px 8px; width:90px;">Date</th>
-            <th style="text-align:left; padding:6px 8px; width:80px;">Robot</th>
-            <th style="text-align:left; padding:6px 8px; width:120px;">Task</th>
-            <th style="text-align:left; padding:6px 8px; width:120px;">Issue</th>
-            <th style="text-align:left; padding:6px 8px; width:60px;">Sev.</th>
-            <th style="text-align:left; padding:6px 8px;">Notes</th>
-            <th style="text-align:left; padding:6px 8px; width:80px;">By</th>
-            <th style="width:104px; padding:6px 8px;"></th>
-          </tr>
-        </thead>
-        <tbody id="table-body"></tbody>
-      </table>
-    </div>
-    <div id="empty-state" style="display:none; text-align:center; color:var(--text-muted); padding:2rem 0; font-size:13px;">No observations logged yet.</div>
-  </div>
-
   <div class="fb-card" id="card-late-backlog" style="margin-bottom:1.5rem;">
-    <button type="button" id="lb-head" aria-expanded="false" aria-controls="lb-content"
-      style="display:flex; align-items:center; gap:11px; width:100%; text-align:left;
-             background:transparent; border:none; padding:0; cursor:pointer;">
-      <svg id="lb-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-        stroke-linecap="round" stroke-linejoin="round"
-        style="width:15px; height:15px; color:var(--text-muted); flex-shrink:0;
-               transition:transform var(--dur-reveal) var(--ease);"><path d="M9 6l6 6-6 6"/></svg>
-      <span style="flex:1; min-width:0;">
-        <span style="font-size:17px; font-weight:600; letter-spacing:-0.01em; color:var(--text-primary);">Late Upload Backlog</span>
-        <span id="lb-head-sub" style="display:block; font-size:12.5px; color:var(--text-secondary); margin-top:2px;"></span>
-      </span>
-      <span id="lb-head-count"></span>
-    </button>
+    <div class="fold-bar">
+      <button type="button" id="lb-head" class="fold-head" aria-expanded="true" aria-controls="lb-content">
+        <svg class="fold-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        <span style="flex:1; min-width:0;">
+          <span class="fold-title">Late Upload Backlog</span>
+          <span id="lb-head-sub" class="fold-sub"></span>
+        </span>
+        <span id="lb-head-count"></span>
+      </button>
+    </div>
 
-    <div id="lb-content" style="display:none; margin-top:16px;">
+    <div id="lb-content" class="fold is-open is-settled"><div class="fold-inner"><div class="fold-pad">
     <div id="lb-setup" style="display:none; margin-bottom:12px;"></div>
 
-    <div id="lb-cards" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px,1fr)); gap:11px; margin-bottom:14px;"></div>
+    <div id="lb-cards" class="mtiles-compact" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:9px; margin-bottom:14px;"></div>
 
     <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:14px;">
       <span class="fchip">
@@ -1272,6 +1286,14 @@ html, body {
         <input type="date" id="lb-from" aria-label="From date">
         <span class="fchip-sep">&rarr;</span>
         <input type="date" id="lb-to" aria-label="To date">
+      </span>
+      <span class="fchip">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/></svg>
+        <select id="lb-robot" aria-label="Bot"><option value="">All bots</option></select>
+      </span>
+      <span class="fchip">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <select id="lb-reviewer" aria-label="Reviewer"><option value="">All reviewers</option></select>
       </span>
       <span class="fchip">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
@@ -1291,14 +1313,14 @@ html, body {
       </span>
       <span class="fchip">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-        <input type="text" id="lb-search" placeholder="Bot or reviewer" aria-label="Search">
+        <input type="text" id="lb-search" placeholder="Search notes, bot, reviewer" aria-label="Search">
       </span>
       <button id="lb-clear" class="fchip fchip-btn">Clear</button>
       <span style="flex:1;"></span>
       <span id="lb-count" style="font-size:11.5px; color:var(--text-muted);"></span>
     </div>
 
-    <div style="overflow-x:auto; max-height:520px; overflow-y:auto;">
+    <div style="overflow-x:auto; max-height:380px; overflow-y:auto;">
       <table class="ptable" style="min-width:860px;">
         <thead>
           <tr>
@@ -1320,7 +1342,79 @@ html, body {
       Resolving an item records who did it and when. It never removes the late flag from the
       observation, and it never changes whether the review itself is done &mdash; those are separate.
     </div>
+    </div></div></div>
+  </div>
+
+  <div class="fb-card" id="card-obs" style="margin-bottom:1.5rem;">
+    <div class="fold-bar">
+      <button type="button" id="obs-head" class="fold-head" aria-expanded="false" aria-controls="obs-content">
+        <svg class="fold-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        <span style="flex:1; min-width:0;">
+          <span class="fold-title">Logged Observations</span>
+          <span class="fold-sub">Every logged entry &mdash; search, filter, edit and delete</span>
+        </span>
+        <span id="obs-head-count"></span>
+      </button>
+      <button id="btn-back" style="font-size:12.5px; padding:6px 12px;"><i class="ti ti-arrow-left" style="font-size:14px; vertical-align:-2px;" aria-hidden="true"></i> Back</button>
     </div>
+
+    <div id="obs-content" class="fold"><div class="fold-inner"><div class="fold-pad">
+    <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:14px;">
+      <span class="fchip">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        <input type="date" id="filter-from" aria-label="From date" title="From date">
+        <span class="fchip-sep">&rarr;</span>
+        <input type="date" id="filter-to" aria-label="To date" title="To date">
+      </span>
+      <span class="fchip"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/></svg><select id="filter-robot" aria-label="Robot"><option value="">All robots</option></select></span>
+      <span class="fchip"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg><select id="filter-task" aria-label="Task"><option value="">All tasks</option></select></span>
+      <span class="fchip"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+        <select id="filter-issue" aria-label="Issue type">
+          <option value="">All issue types</option>
+          <option value="none">No error</option>
+          <option value="idle_hand">Idle hand syndrome</option>
+          <option value="off_framing">Off framing</option>
+          <option value="improper_butler">Improper butler</option>
+          <option value="unnatural_pathing">Unnatural pathing</option>
+          <option value="crab_walking">Crab walking</option>
+          <option value="foot_shuffling">Foot shuffling</option>
+          <option value="camera_blur">Camera blur</option>
+          <option value="other">Other</option>
+          <option value="nodata">No data (not evaluated)</option>
+        </select>
+      </span>
+      <span class="fchip"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        <select id="filter-late" aria-label="Upload timing">
+          <option value="">On-time &amp; late</option>
+          <option value="late">Late uploads only</option>
+          <option value="ontime">On-time only</option>
+        </select>
+      </span>
+      <span class="fchip"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><select id="filter-user" aria-label="Logger"><option value="">All loggers</option></select></span>
+      <span class="fchip"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="filter-search" placeholder="Search task or notes" aria-label="Search"></span>
+      <button id="filter-clear" class="fchip fchip-btn">Clear</button>
+    </div>
+    <div id="table-wrap" style="overflow-x:auto;">
+      <table style="width:100%; min-width:860px; border-collapse:collapse; font-size:13px; table-layout:fixed;">
+        <thead>
+          <tr style="border-bottom:0.5px solid var(--border);">
+            <th style="text-align:left; padding:6px 8px; width:108px;">Date</th>
+            <th style="text-align:left; padding:6px 8px; width:84px;">Robot</th>
+            <th style="text-align:left; padding:6px 8px; width:130px;">Task</th>
+            <th style="text-align:left; padding:6px 8px; width:200px;">Issue</th>
+            <th style="text-align:left; padding:6px 8px; width:60px;">Sev.</th>
+            <th style="text-align:left; padding:6px 8px;">Notes</th>
+            <th style="text-align:left; padding:6px 8px; width:80px;">By</th>
+            <th style="width:104px; padding:6px 8px;"></th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+    <div id="empty-state" style="display:none; text-align:center; color:var(--text-muted); padding:2rem 0; font-size:13px;">No observations logged yet.</div>
+    <div id="obs-more" class="obs-more" style="display:none;"></div>
+    </div></div></div>
   </div>
 
   <div class="fb-card" id="card-audit">
@@ -3003,12 +3097,15 @@ function lateBacklogRows() {
 function lbFiltered() {
   var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
   var from = g('lb-from'), to = g('lb-to'), st = g('lb-status'), q = g('lb-search').toLowerCase().trim();
+  var bot = g('lb-robot'), who = g('lb-reviewer');
 
   var rows = lateBacklogRows().filter(function (r) {
     if (from && r.date < from) return false;
     if (to && r.date > to) return false;
+    if (bot && r.robot !== bot) return false;
+    if (who && r.reviewer !== who) return false;
     if (st && r.status !== st) return false;
-    if (q && (r.robot + ' ' + r.reviewer).toLowerCase().indexOf(q) === -1) return false;
+    if (q && (r.robot + ' ' + r.reviewer + ' ' + r.notes).toLowerCase().indexOf(q) === -1) return false;
     return true;
   });
 
@@ -3022,6 +3119,27 @@ function lbFiltered() {
     return a.status === 'resolved' ? byDate(a, b) : -byDate(a, b);
   });
   return rows;
+}
+
+// Bot and reviewer choices come from the backlog itself, so the lists
+// only ever offer values that would match something. A chosen value that
+// no longer exists is kept, so a filter never silently resets.
+function lbFillSelects() {
+  var all = lateBacklogRows();
+  var fill = function (id, label, values) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var cur = el.value;
+    var list = values.filter(function (v, i, a) { return v && a.indexOf(v) === i; })
+      .sort(function (a, b) { return a.localeCompare(b); });
+    if (cur && list.indexOf(cur) === -1) list.unshift(cur);
+    el.innerHTML = '<option value="">' + esc(label) + '</option>' + list.map(function (v) {
+      return '<option value="' + escAttr(v) + '">' + esc(v) + '</option>';
+    }).join('');
+    el.value = cur;
+  };
+  fill('lb-robot', 'All bots', all.map(function (r) { return r.robot; }));
+  fill('lb-reviewer', 'All reviewers', all.map(function (r) { return r.reviewer; }));
 }
 
 function renderLbCards(rows) {
@@ -3083,7 +3201,8 @@ function renderLbTable(rows) {
         (r.historyCount > 1 ? ' <span class="umark">' + r.historyCount + ' changes</span>' : '') + '</td>' +
       '<td style="white-space:nowrap; text-align:right;">' +
         '<button type="button" class="lb-open fchip fchip-btn" data-obs="' + escAttr(r.id) + '" ' +
-          'style="font-size:11px; padding:3px 9px;">Open</button>' +
+          'title="Show the original observation in Logged Observations" ' +
+          'style="font-size:11px; padding:3px 9px;">View</button>' +
         (canAct
           ? ' <button type="button" class="lb-toggle fchip fchip-btn" data-obs="' + escAttr(r.id) + '" ' +
             'data-to="' + (r.status === 'resolved' ? 'unresolved' : 'resolved') + '" ' +
@@ -3097,7 +3216,7 @@ function renderLbTable(rows) {
     b.addEventListener('click', function (ev) {
       ev.stopPropagation();
       var tr = b.closest('tr');
-      focusLogsOnDate(tr.dataset.date, tr.dataset.bot);
+      focusLogsOnDate(tr.dataset.date, tr.dataset.bot, tr.dataset.obs);
     });
   });
   Array.prototype.forEach.call(body.querySelectorAll('.lb-toggle'), function (b) {
@@ -3131,15 +3250,32 @@ function renderLbHeader() {
         : '');
 }
 
-function setLateBacklogOpen(open) {
-  var body = document.getElementById('lb-content');
-  var head = document.getElementById('lb-head');
-  var caret = document.getElementById('lb-caret');
+// One folding behaviour for every collapsible card: <name>-head is the
+// toggle, <name>-content the body. The open state lives in the DOM (the
+// is-open class and aria-expanded), so there is nothing to drift.
+var FOLD_MS = 280;
+function isFoldOpen(name) {
+  var body = document.getElementById(name + '-content');
+  return !!(body && body.classList.contains('is-open'));
+}
+function setFold(name, open) {
+  var body = document.getElementById(name + '-content');
+  var head = document.getElementById(name + '-head');
   if (!body || !head) return;
-  body.style.display = open ? 'block' : 'none';
+  clearTimeout(body._foldT);
+  body.classList.remove('is-settled');
+  body.classList.toggle('is-open', !!open);
   head.setAttribute('aria-expanded', open ? 'true' : 'false');
-  if (caret) caret.style.transform = open ? 'rotate(90deg)' : '';
+  // Once fully open, stop clipping so focus rings and shadows show.
+  if (open) body._foldT = setTimeout(function () { body.classList.add('is-settled'); }, MOTION_OFF ? 0 : FOLD_MS);
+}
+
+function setLateBacklogOpen(open) {
+  setFold('lb', open);
   if (open) renderLateBacklog();
+}
+function setObsOpen(open) {
+  setFold('obs', open);
 }
 
 function openLateBacklog() {
@@ -3151,8 +3287,8 @@ function openLateBacklog() {
 function renderLateBacklog() {
   renderLbHeader();
   if (!document.getElementById('lb-body')) return;
-  var content = document.getElementById('lb-content');
-  if (content && content.style.display === 'none') return;   // folded: nothing to draw
+  if (!isFoldOpen('lb')) return;   // folded: only the header needs drawing
+  lbFillSelects();
 
   // The LIST works without the table - it comes from the observations. Only
   // resolving needs the SQL, so say exactly that rather than hiding
@@ -3543,7 +3679,7 @@ function renderDateMatrix(weeks, statusF) {
 }
 
 // Shared by the heatmap and the list: filter the log table down to one date.
-function focusLogsOnDate(dateISO, bot) {
+function focusLogsOnDate(dateISO, bot, obsId) {
   ['filter-robot','filter-task','filter-issue','filter-user','filter-search','filter-late'].forEach(function (id) {
     var el = document.getElementById(id); if (el) el.value = '';
   });
@@ -3552,8 +3688,11 @@ function focusLogsOnDate(dateISO, bot) {
   var t = document.getElementById('filter-to'); if (t) t.value = dateISO;
   render();
   if (typeof renderAuditFiltered === 'function') renderAuditFiltered();
-  var tbl = document.getElementById('table-body');
-  if (tbl) tbl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Asking for the logs means wanting to see them: open the panel first.
+  setObsOpen(true);
+  if (obsId) { flashRow(obsId); return; }
+  var card = document.getElementById('card-obs');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /* =====================================================================
@@ -4024,7 +4163,7 @@ function setDatesView(v) {
   if (dte) dte.addEventListener('click', exportDateTableCSV);
 
   // ---- late upload backlog ----
-  ['lb-from', 'lb-to', 'lb-status', 'lb-search'].forEach(function (id) {
+  ['lb-from', 'lb-to', 'lb-robot', 'lb-reviewer', 'lb-status', 'lb-search'].forEach(function (id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', renderLateBacklog);
@@ -4033,13 +4172,19 @@ function setDatesView(v) {
   var lbs = document.getElementById('lb-sort');
   if (lbs) lbs.addEventListener('change', function () { _lbSort = lbs.value; renderLateBacklog(); });
   var lbh = document.getElementById('lb-head');
-  if (lbh) lbh.addEventListener('click', function () {
-    var body = document.getElementById('lb-content');
-    setLateBacklogOpen(!body || body.style.display === 'none');
+  if (lbh) lbh.addEventListener('click', function () { setLateBacklogOpen(!isFoldOpen('lb')); });
+  var obh = document.getElementById('obs-head');
+  if (obh) obh.addEventListener('click', function () { setObsOpen(!isFoldOpen('obs')); });
+  var obm = document.getElementById('obs-more');
+  if (obm) obm.addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-more]');
+    if (!b) return;
+    _obsLimit = b.dataset.more === 'all' ? Infinity : _obsLimit + OBS_PAGE;
+    render();
   });
   var lbc = document.getElementById('lb-clear');
   if (lbc) lbc.addEventListener('click', function () {
-    ['lb-from', 'lb-to', 'lb-status', 'lb-search'].forEach(function (id) {
+    ['lb-from', 'lb-to', 'lb-robot', 'lb-reviewer', 'lb-status', 'lb-search'].forEach(function (id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
     renderLateBacklog();
@@ -4097,6 +4242,13 @@ function placeTabIndicator() {
   _tabInd.style.setProperty('--x', active.offsetLeft + 'px');
   _tabInd.style.setProperty('--w', active.offsetWidth + 'px');
   tabs.classList.add('has-ind');
+  // Keep the active tab in sight when the row is scrolled (phones).
+  if (tabs.scrollWidth > tabs.clientWidth) {
+    var l = active.offsetLeft, r = l + active.offsetWidth;
+    if (l < tabs.scrollLeft || r > tabs.scrollLeft + tabs.clientWidth) {
+      tabs.scrollTo({ left: Math.max(0, l - 24), behavior: MOTION_OFF ? 'auto' : 'smooth' });
+    }
+  }
 }
 
 // A transient confirmation where the eye already is.
@@ -4119,14 +4271,23 @@ function toast(msg, bad) {
 // Mark the row an action just created or changed, so the change is visible
 // without the user hunting for it.
 function flashRow(id) {
-  if (MOTION_OFF || !id) return;
+  if (!id) return;
+  // The table shows a page at a time; widen it if the row sits further down.
+  var idx = _obsRows.findIndex(function (e) { return e.id === id; });
+  if (idx >= _obsLimit) { _obsLimit = Math.ceil((idx + 1) / OBS_PAGE) * OBS_PAGE; render(); }
+  if (MOTION_OFF) {
+    var t0 = document.querySelector('#table-body tr[data-row="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+    if (t0 && isFoldOpen('obs')) t0.scrollIntoView({ block: 'center' });
+    return;
+  }
+  // Wait out the panel opening, so the scroll lands where the row ends up.
   setTimeout(function () {
     var tr = document.querySelector('#table-body tr[data-row="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
     if (tr) {
       replayAnim(tr, 'row-flash');
-      tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (isFoldOpen('obs')) tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, 60);
+  }, isFoldOpen('obs') ? FOLD_MS + 40 : 60);
 }
 
 // A report-shaped placeholder. Waiting should show the shape of what is
@@ -4221,6 +4382,10 @@ function renderAuditList(rows) {
   }).join('');
 }
 
+// The observations table draws a page at a time. Changing a filter starts
+// again from the first page; a data refresh keeps however far you had read.
+var OBS_PAGE = 100, _obsLimit = OBS_PAGE, _obsSig = null, _obsRows = [];
+
 function render() {
   const robotF = document.getElementById('filter-robot').value;
   const issueF = document.getElementById('filter-issue').value;
@@ -4245,18 +4410,51 @@ function render() {
     }
     return true;
   }).sort((a,b) => b.date.localeCompare(a.date));
+  _obsRows = rows;
+
+  const sig = [robotF, issueF, searchF, fromF, toF, userF, taskF, lateF].join('\u0001');
+  if (sig !== _obsSig) { _obsSig = sig; _obsLimit = OBS_PAGE; }
+
+  // Header count, readable while folded: the total, or "x of y" when a
+  // filter is narrowing it, so a filtered view is never mistaken for all.
+  const hc = document.getElementById('obs-head-count');
+  if (hc) {
+    const filtered = sig.replace(/\u0001/g, '') !== '';
+    hc.innerHTML = '<span class="sbadge" style="color:var(--text-secondary); background:var(--surface-1); ' +
+      'border:1px solid var(--border);">' +
+      (filtered ? rows.length + ' of ' + entries.length : entries.length) +
+      (entries.length === 1 && !filtered ? ' observation' : ' observations') + '</span>';
+  }
 
   const body = document.getElementById('table-body');
   const empty = document.getElementById('empty-state');
+  const more = document.getElementById('obs-more');
   if (rows.length === 0) {
     body.innerHTML = '';
     empty.style.display = 'block';
+    empty.textContent = entries.length ? 'Nothing matches these filters.' : 'No observations logged yet.';
+    if (more) more.style.display = 'none';
     return;
   }
   empty.style.display = 'none';
-  body.innerHTML = rows.map(e => `
+
+  const page = rows.slice(0, _obsLimit);
+  if (more) {
+    if (page.length < rows.length) {
+      const left = rows.length - page.length;
+      more.style.display = 'flex';
+      more.innerHTML = '<span>Showing ' + page.length + ' of ' + rows.length + '</span>' +
+        '<button type="button" class="fchip fchip-btn" data-more="page">Show ' + Math.min(OBS_PAGE, left) + ' more</button>' +
+        '<button type="button" class="fchip fchip-btn" data-more="all">Show all</button>';
+    } else {
+      more.style.display = rows.length > OBS_PAGE ? 'flex' : 'none';
+      more.innerHTML = '<span>Showing all ' + rows.length + '</span>';
+    }
+  }
+
+  body.innerHTML = page.map(e => `
     <tr data-row="${escAttr(e.id)}" style="border-bottom:0.5px solid var(--border);">
-      <td style="padding:6px 8px; vertical-align:top;">${e.date}${lateBadge(e) ? '<div style="margin-top:3px;">' + lateBadge(e) + '</div>' : ''}</td>
+      <td style="padding:6px 8px; vertical-align:top; white-space:nowrap;">${e.date}${lateBadge(e) ? '<div style="margin-top:3px;">' + lateBadge(e) + '</div>' : ''}</td>
       <td style="padding:6px 8px; vertical-align:top;">${e.robot}</td>
       <td style="padding:6px 8px; vertical-align:top; word-break:break-word;">${taskList(e).join(', ') || '—'}</td>
       <td style="padding:6px 8px; vertical-align:top;">${issueCellText(e)}</td>

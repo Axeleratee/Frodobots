@@ -39,6 +39,7 @@ with sync_playwright() as pw:
         "| row with no user id keeps its stored name")
 
     pg.click("#tab-logs"); pg.wait_for_timeout(700)
+    pg.click("#obs-head"); pg.wait_for_timeout(400)   # Logged Observations starts folded
     opts = pg.eval_on_selector_all("#filter-user option", "els => els.map(e => e.value)")
     chk("filter_uses_current_name", "cris" in opts and "oldname" not in opts, "| %s" % opts)
 
