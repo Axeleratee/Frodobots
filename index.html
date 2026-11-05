@@ -1246,6 +1246,76 @@ html, body {
     <div id="empty-state" style="display:none; text-align:center; color:var(--text-muted); padding:2rem 0; font-size:13px;">No observations logged yet.</div>
   </div>
 
+  <div class="fb-card" id="card-late-backlog" style="margin-bottom:1.5rem;">
+    <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+      <div style="margin-right:auto;">
+        <div style="font-size:17px; font-weight:600; letter-spacing:-0.01em;">Late Upload Backlog</div>
+        <div style="font-size:12.5px; color:var(--text-secondary); margin-top:2px;">
+          Every observation marked as a late upload, collected here automatically
+        </div>
+      </div>
+    </div>
+
+    <div id="lb-setup" style="display:none; margin-bottom:12px;"></div>
+
+    <div id="lb-cards" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px,1fr)); gap:11px; margin-bottom:14px;"></div>
+
+    <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:14px;">
+      <span class="fchip">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        <input type="date" id="lb-from" aria-label="From date">
+        <span class="fchip-sep">&rarr;</span>
+        <input type="date" id="lb-to" aria-label="To date">
+      </span>
+      <span class="fchip">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
+        <select id="lb-status" aria-label="Backlog status">
+          <option value="">All statuses</option>
+          <option value="unresolved">Unresolved</option>
+          <option value="resolved">Resolved</option>
+        </select>
+      </span>
+      <span class="fchip">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
+        <select id="lb-sort" aria-label="Sort">
+          <option value="unresolved">Unresolved first</option>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+      </span>
+      <span class="fchip">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" id="lb-search" placeholder="Bot or reviewer" aria-label="Search">
+      </span>
+      <button id="lb-clear" class="fchip fchip-btn">Clear</button>
+      <span style="flex:1;"></span>
+      <span id="lb-count" style="font-size:11.5px; color:var(--text-muted);"></span>
+    </div>
+
+    <div style="overflow-x:auto; max-height:520px; overflow-y:auto;">
+      <table class="ptable" style="min-width:860px;">
+        <thead>
+          <tr>
+            <th>Episode date</th>
+            <th>Bot</th>
+            <th>HBA Reviewer</th>
+            <th>Logged</th>
+            <th>Status</th>
+            <th>Notes</th>
+            <th>Last updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="lb-body"></tbody>
+      </table>
+    </div>
+    <div id="lb-empty" style="display:none; font-size:12.5px; color:var(--text-muted); padding:18px 2px;"></div>
+    <div style="font-size:11.5px; color:var(--text-muted); margin-top:12px;">
+      Resolving an item records who did it and when. It never removes the late flag from the
+      observation, and it never changes whether the review itself is done &mdash; those are separate.
+    </div>
+  </div>
+
   <div class="fb-card" id="card-audit">
     <div style="font-size:15px; font-weight:500; margin-bottom:4px;">Audit log</div>
     <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:12px;">Who created, edited, or deleted observations. Uses the date and logger filters above.</div>
@@ -2532,6 +2602,7 @@ function refreshTeamViews() {
   if (typeof renderTracker === 'function') renderTracker();
   if (typeof renderDateTable === 'function') renderDateTable();
   if (typeof renderTeamOps === 'function') renderTeamOps();
+  if (typeof renderLateBacklog === 'function') renderLateBacklog();
 }
 
 function currentUserId() {
@@ -2849,6 +2920,226 @@ function renderTrkTrend(rows) {
       '<span>' + esc(plainDate(all[0])) + '</span>' +
       '<span>' + totalDone + ' of ' + rows.length + ' done</span>' +
       '<span>' + esc(plainDate(all[all.length - 1])) + '</span></div>';
+}
+
+/* =====================================================================
+   LATE UPLOAD BACKLOG
+
+   The list needs no table of its own: it is every observation already
+   flagged as a late upload, so it collects itself, can never hold a
+   duplicate, and cannot drift out of step with the logs.
+
+   The one thing that cannot be derived is whether a person has dealt
+   with it. That is stored as EVENTS, so the history is kept by
+   construction: resolving and reopening both leave a row behind, with
+   who did it and when. Current status is simply the newest event.
+
+   Resolving is independent of everything else. It does not remove the
+   late flag from the observation, and it has nothing to do with whether
+   the review is done.
+   ===================================================================== */
+var _lateEvents = [];
+var _lateLoaded = false;
+var _lbSort = 'unresolved';
+
+const LB_STATUS = {
+  unresolved: { label: 'Unresolved', color: '#e8a33d',          bg: 'rgba(232,163,61,0.12)',  border: 'rgba(232,163,61,0.32)' },
+  resolved:   { label: 'Resolved',   color: 'var(--fb-green)',  bg: 'rgba(95,224,160,0.12)',  border: 'rgba(95,224,160,0.30)' }
+};
+
+async function loadLateEvents() {
+  if (!sb) return;
+  try {
+    const { data, error } = await sb.from('late_backlog_events')
+      .select('id, observation_id, status, note, created_at, created_by')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    _lateEvents = data || [];
+    _lateLoaded = true;
+  } catch (e) {
+    console.warn('late_backlog_events unavailable', e && e.message);
+    _lateEvents = [];
+    _lateLoaded = false;
+  }
+  renderLateBacklog();
+}
+
+// Newest event per observation. The list is ordered newest-first already,
+// so the first one seen for an id wins.
+function latestLateEvents() {
+  var ix = {};
+  _lateEvents.forEach(function (ev) {
+    if (!ix[ev.observation_id]) ix[ev.observation_id] = ev;
+  });
+  return ix;
+}
+
+function lateBacklogRows() {
+  var ix = latestLateEvents();
+  return entries.filter(isLateUpload).map(function (e) {
+    var ev = ix[e.id];
+    return {
+      id: e.id,
+      date: e.date,
+      robot: e.robot,
+      reviewer: observerName(e),
+      loggedAt: e._at || null,
+      notes: e.notes || '',
+      status: (ev && ev.status) || 'unresolved',
+      resolvedBy: ev && ev.status === 'resolved' ? (teamName(ev.created_by) || '') : '',
+      updatedAt: (ev && ev.created_at) || e._at || null,
+      historyCount: _lateEvents.filter(function (x) { return x.observation_id === e.id; }).length
+    };
+  });
+}
+
+function lbFiltered() {
+  var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
+  var from = g('lb-from'), to = g('lb-to'), st = g('lb-status'), q = g('lb-search').toLowerCase().trim();
+
+  var rows = lateBacklogRows().filter(function (r) {
+    if (from && r.date < from) return false;
+    if (to && r.date > to) return false;
+    if (st && r.status !== st) return false;
+    if (q && (r.robot + ' ' + r.reviewer).toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  });
+
+  var byDate = function (a, b) { return b.date.localeCompare(a.date) || a.robot.localeCompare(b.robot); };
+  if (_lbSort === 'oldest') rows.sort(function (a, b) { return -byDate(a, b); });
+  else if (_lbSort === 'newest') rows.sort(byDate);
+  else rows.sort(function (a, b) {
+    // Unresolved first, and oldest of those at the top: the one that has
+    // been sitting longest is the one worth looking at.
+    if ((a.status === 'resolved') !== (b.status === 'resolved')) return a.status === 'resolved' ? 1 : -1;
+    return a.status === 'resolved' ? byDate(a, b) : -byDate(a, b);
+  });
+  return rows;
+}
+
+function renderLbCards(rows) {
+  var host = document.getElementById('lb-cards');
+  if (!host) return;
+  var all = lateBacklogRows();
+  var un = all.filter(function (r) { return r.status === 'unresolved'; }).length;
+  var tile = function (label, value, color, sub) {
+    return '<div class="mtile">' +
+      '<div class="mtile-head"><span>' + esc(label) + '</span></div>' +
+      '<div class="mtile-value"' + (color ? ' style="color:' + color + ';"' : '') + '>' + value + '</div>' +
+      (sub ? '<div class="mtile-sub">' + esc(sub) + '</div>' : '') +
+      '</div>';
+  };
+  host.innerHTML =
+    tile('Total late uploads', all.length, '', 'all time') +
+    tile('Unresolved', un, un ? LB_STATUS.unresolved.color : 'var(--text-muted)') +
+    tile('Resolved', all.length - un, LB_STATUS.resolved.color);
+}
+
+function renderLbTable(rows) {
+  var body = document.getElementById('lb-body');
+  var empty = document.getElementById('lb-empty');
+  var count = document.getElementById('lb-count');
+  if (!body) return;
+
+  var all = lateBacklogRows().length;
+  if (count) count.textContent = rows.length ? rows.length + ' shown' + (rows.length !== all ? ' of ' + all : '') : '';
+
+  if (!rows.length) {
+    body.innerHTML = '';
+    if (empty) {
+      empty.style.display = 'block';
+      empty.textContent = !_lateLoaded
+        ? 'The backlog is not set up yet \u2014 run supabase-late-backlog.sql in the Supabase SQL editor once, then refresh.'
+        : (all ? 'Nothing matches these filters.'
+               : 'No late uploads recorded. Tick \u201cLate upload\u201d when logging an observation and it will appear here by itself.');
+    }
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  var canAct = _lateLoaded && (currentRole === 'admin' || currentRole === 'editor');
+
+  body.innerHTML = rows.map(function (r) {
+    var m = LB_STATUS[r.status];
+    var sub = r.status === 'resolved' && r.resolvedBy
+      ? '<div class="mtile-sub" style="margin-top:3px;">by ' + esc(r.resolvedBy) + '</div>' : '';
+    return '<tr data-obs="' + escAttr(r.id) + '" data-date="' + escAttr(r.date) + '" data-bot="' + escAttr(r.robot) + '">' +
+      '<td style="white-space:nowrap; color:var(--text-secondary);">' + esc(plainDate(r.date)) + '</td>' +
+      '<td style="font-weight:600;">' + esc(r.robot) + '</td>' +
+      '<td>' + esc(r.reviewer || '\u2014') + '</td>' +
+      '<td style="white-space:nowrap; color:var(--text-muted);">' + esc(trkWhen(r.loggedAt)) + '</td>' +
+      '<td><span class="sbadge" style="color:' + m.color + '; background:' + m.bg +
+        '; border:1px solid ' + m.border + ';">' + esc(m.label) + '</span>' + sub + '</td>' +
+      '<td style="max-width:260px; color:var(--text-secondary); word-break:break-word;">' +
+        (r.notes ? esc(r.notes) : '<span style="color:var(--text-muted);">\u2014</span>') + '</td>' +
+      '<td style="white-space:nowrap; color:var(--text-muted);">' + esc(trkWhen(r.updatedAt)) +
+        (r.historyCount > 1 ? ' <span class="umark">' + r.historyCount + ' changes</span>' : '') + '</td>' +
+      '<td style="white-space:nowrap; text-align:right;">' +
+        '<button type="button" class="lb-open fchip fchip-btn" data-obs="' + escAttr(r.id) + '" ' +
+          'style="font-size:11px; padding:3px 9px;">Open</button>' +
+        (canAct
+          ? ' <button type="button" class="lb-toggle fchip fchip-btn" data-obs="' + escAttr(r.id) + '" ' +
+            'data-to="' + (r.status === 'resolved' ? 'unresolved' : 'resolved') + '" ' +
+            'style="font-size:11px; padding:3px 9px;">' +
+            (r.status === 'resolved' ? 'Reopen' : 'Resolve') + '</button>'
+          : '') +
+      '</td></tr>';
+  }).join('');
+
+  Array.prototype.forEach.call(body.querySelectorAll('.lb-open'), function (b) {
+    b.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      var tr = b.closest('tr');
+      focusLogsOnDate(tr.dataset.date, tr.dataset.bot);
+    });
+  });
+  Array.prototype.forEach.call(body.querySelectorAll('.lb-toggle'), function (b) {
+    b.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      setLateStatus(b.dataset.obs, b.dataset.to);
+    });
+  });
+}
+
+function renderLateBacklog() {
+  if (!document.getElementById('lb-body')) return;
+
+  // The LIST works without the table - it comes from the observations. Only
+  // resolving needs the SQL, so say exactly that rather than hiding
+  // everything behind a setup message.
+  var setup = document.getElementById('lb-setup');
+  if (setup) {
+    if (_lateLoaded) { setup.style.display = 'none'; setup.innerHTML = ''; }
+    else {
+      setup.style.display = 'block';
+      setup.innerHTML = '<div style="font-size:12.5px; padding:10px 12px; border-radius:9px; ' +
+        'background:rgba(217,169,63,0.08); border:1px solid rgba(217,169,63,0.28);">' +
+        '<b style="color:#d9a93f;">Resolving is not set up yet.</b> ' +
+        '<span style="color:var(--text-secondary);">The list below is live, but marking an item ' +
+        'resolved needs <b>supabase-late-backlog.sql</b> run once in the Supabase SQL editor.</span></div>';
+    }
+  }
+
+  var rows = lbFiltered();
+  renderLbCards(rows);
+  renderLbTable(rows);
+}
+
+// Resolving adds an event; it never edits one, and never touches the
+// observation. The late flag and the review status are left alone.
+async function setLateStatus(obsId, status) {
+  if (!sb || !_lateLoaded) return;
+  var row = lateBacklogRows().find(function (r) { return r.id === obsId; });
+  if (!row) return;
+  try {
+    const { error } = await sb.from('late_backlog_events')
+      .insert({ observation_id: obsId, status: status });
+    if (error) throw error;
+    await loadLateEvents();
+    toast(row.robot + ' \u00b7 ' + plainDate(row.date) + ' \u2192 ' + LB_STATUS[status].label);
+  } catch (e) {
+    toast('Could not update the backlog: ' + (e && e.message ? e.message : 'unknown error'), true);
+  }
 }
 
 /* ---------- Progress tracker: export ---------- */
@@ -3408,7 +3699,8 @@ function renderDtCards(rows) {
         ' <b style="color:var(--text-primary);">' + n + '</b></span>';
     };
     secondary.innerHTML =
-      item('Late uploads', c.late, UPLOAD_STATUS.late.color) +
+      '<a href="#card-late-backlog" id="dates-late-link" style="color:inherit; text-decoration:none; border-bottom:1px dotted var(--border-strong);">' +
+        item('Late uploads', c.late, UPLOAD_STATUS.late.color) + '</a>' +
       item('Nothing arrived', c.nodata, UPLOAD_STATUS.nodata.color) +
       item('Missing evaluations', c.missing, UPLOAD_STATUS.missing.color) +
       (c.covered ? item('Covered by a teammate', c.covered, 'var(--text-secondary)') : '') +
@@ -3673,6 +3965,23 @@ function setDatesView(v) {
   });
   var dte = document.getElementById('dt-export');
   if (dte) dte.addEventListener('click', exportDateTableCSV);
+
+  // ---- late upload backlog ----
+  ['lb-from', 'lb-to', 'lb-status', 'lb-search'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', renderLateBacklog);
+    el.addEventListener('input', renderLateBacklog);
+  });
+  var lbs = document.getElementById('lb-sort');
+  if (lbs) lbs.addEventListener('change', function () { _lbSort = lbs.value; renderLateBacklog(); });
+  var lbc = document.getElementById('lb-clear');
+  if (lbc) lbc.addEventListener('click', function () {
+    ['lb-from', 'lb-to', 'lb-status', 'lb-search'].forEach(function (id) {
+      var el = document.getElementById(id); if (el) el.value = '';
+    });
+    renderLateBacklog();
+  });
 
   // Apply the default view once at startup. Without this the card renders
   // the table but keeps the calendar's summary line and hint, because those
@@ -6363,7 +6672,7 @@ function runIntro() {
       if (playIntro) { playIntro = false; intro = runIntro(); overlay.style.display = 'none'; }
       var loadP = loadEntries();
       if (intro) { await Promise.all([intro.done, loadP]); } else { await loadP; }
-      appReady = true; showApp(); applyRoleUI(); loadTeam(); loadAssignments(); loadOptions(); loadReportHistory(); loadAuditLog();
+      appReady = true; showApp(); applyRoleUI(); loadTeam(); loadAssignments(); loadLateEvents(); loadOptions(); loadReportHistory(); loadAuditLog();
       if (currentRole === 'admin') loadUsers();
       if (intro) await intro.dismiss();
       maybeOfferMigration();

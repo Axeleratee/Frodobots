@@ -65,14 +65,20 @@ def task(tid, date, robot, reviewer=None, status="pending", updated=None):
             "completed_at": (updated or (date + "T08:00:00Z")) if done else None}
 
 
+def late_event(eid, obs_id, status, at, by=ADMIN):
+    return {"id": eid, "observation_id": obs_id, "status": status,
+            "note": None, "created_at": at, "created_by": by}
+
+
 def seed(page, observations=None, assignments=None, options=None,
-         profiles=None, missing=(), tasks=None):
+         profiles=None, missing=(), tasks=None, late_events=None):
     """Load fixtures into localStorage, then reload so the app reads them."""
     page.evaluate(
-        """([obs, asg, opt, prof, miss, tsk]) => {
+        """([obs, asg, opt, prof, miss, tsk, lev]) => {
           localStorage.setItem('__mock_table', JSON.stringify(obs));
           localStorage.setItem('__mock_assignments', JSON.stringify(asg));
           localStorage.setItem('__mock_tasks', JSON.stringify(tsk));
+          localStorage.setItem('__mock_late', JSON.stringify(lev));
           localStorage.setItem('__mock_options', JSON.stringify(opt));
           localStorage.setItem('__mock_profiles', JSON.stringify(prof));
           localStorage.setItem('__mock_reports', '[]');
@@ -80,7 +86,7 @@ def seed(page, observations=None, assignments=None, options=None,
           miss.forEach(m => localStorage.setItem('__mock_' + m + '_missing', '1'));
         }""",
         [observations or [], assignments or [], options or [],
-         profiles or PROFILES, list(missing), tasks or []])
+         profiles or PROFILES, list(missing), tasks or [], late_events or []])
     page.reload()
 
 

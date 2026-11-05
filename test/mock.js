@@ -11,7 +11,8 @@
     audit: '__mock_audit',
     options: '__mock_options',
     assignments: '__mock_assignments',
-    review_tasks: '__mock_tasks'
+    review_tasks: '__mock_tasks',
+    late_backlog_events: '__mock_late'
   };
 
   const read = k => { try { return JSON.parse(LS.getItem(k) || '[]'); } catch (e) { return []; } };
@@ -68,6 +69,10 @@
           }
           let rows = key ? read(key) : [];
           rows = rows.filter(r => matches(r, b.filters));
+          if (b.table === 'late_backlog_events') {
+            rows = rows.slice().sort((x, y) =>
+              String(y.created_at || '').localeCompare(String(x.created_at || '')));
+          }
           if (b.table === 'reports' || b.table === 'audit') {
             rows = rows.slice().sort((x, y) =>
               String(y.created_at || '').localeCompare(String(x.created_at || '')));
