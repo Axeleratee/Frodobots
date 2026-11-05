@@ -33,6 +33,14 @@ with sync_playwright() as pw:
     pg.goto(url); H.seed(pg, observations=obs, late_events=events); H.login(pg)
     pg.click("#tab-logs"); pg.wait_for_timeout(1200)
 
+    # ---- it starts folded, so it costs a header instead of a screen ----
+    chk("starts_folded", pg.locator("#lb-content").is_hidden())
+    head = pg.inner_text("#lb-head")
+    chk("header_shows_unresolved", "2 unresolved" in head, "| %s" % head.replace("\n", " "))
+    pg.click("#lb-head"); pg.wait_for_timeout(500)
+    chk("opens_on_click", pg.locator("#lb-content").is_visible())
+    chk("aria_tracks_state", pg.get_attribute("#lb-head", "aria-expanded") == "true")
+
     # ---- it collects itself ----
     r = dict(rows(pg))
     chk("only_late_uploads", sorted(r) == ["L1", "L2", "L3"], "| %s" % sorted(r))
@@ -60,6 +68,13 @@ with sync_playwright() as pw:
     order = pg.evaluate("() => [...document.querySelectorAll('#lb-body tr')].map(t => t.dataset.obs)")
     chk("unresolved_first", order.index("L2") == 2, "| resolved L2 last: %s" % order)
     chk("oldest_unresolved_on_top", order[0] == "L1", "| %s" % order)
+
+    # ---- the late-uploads count up in the overview opens it ----
+    pg.click("#lb-head"); pg.wait_for_timeout(400)
+    chk("folds_again", pg.locator("#lb-content").is_hidden())
+    pg.click("#dates-late-link"); pg.wait_for_timeout(600)
+    chk("overview_count_opens_it", pg.locator("#lb-content").is_visible(),
+        "| the late count in the overview should open the backlog")
 
     # ---- resolve, and keep everything else intact ----
     before_late = pg.evaluate("() => entries.filter(isLateUpload).length")
@@ -132,6 +147,7 @@ with sync_playwright() as pw:
     H.watch_errors(p2, errs)
     p2.goto(url); H.seed(p2, observations=obs, late_events=events); H.login(p2, "ana")
     p2.click("#tab-logs"); p2.wait_for_timeout(1100)
+    p2.click("#lb-head"); p2.wait_for_timeout(500)
     chk("viewer_sees_backlog", p2.eval_on_selector_all("#lb-body tr", "e => e.length") == 3)
     chk("viewer_cannot_resolve", p2.eval_on_selector_all("#lb-body .lb-toggle", "e => e.length") == 0)
     chk("viewer_can_still_open", p2.eval_on_selector_all("#lb-body .lb-open", "e => e.length") == 3)
@@ -142,6 +158,7 @@ with sync_playwright() as pw:
     H.watch_errors(p3, errs)
     p3.goto(url); H.seed(p3, observations=obs, missing=["late_backlog_events"]); H.login(p3)
     p3.click("#tab-logs"); p3.wait_for_timeout(1100)
+    p3.click("#lb-head"); p3.wait_for_timeout(500)
     chk("missing_table_explained", "supabase-late-backlog.sql" in p3.inner_text("#lb-setup"))
     chk("missing_table_list_still_works",
         p3.eval_on_selector_all("#lb-body tr", "e => e.length") == 3,

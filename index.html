@@ -1247,15 +1247,21 @@ html, body {
   </div>
 
   <div class="fb-card" id="card-late-backlog" style="margin-bottom:1.5rem;">
-    <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
-      <div style="margin-right:auto;">
-        <div style="font-size:17px; font-weight:600; letter-spacing:-0.01em;">Late Upload Backlog</div>
-        <div style="font-size:12.5px; color:var(--text-secondary); margin-top:2px;">
-          Every observation marked as a late upload, collected here automatically
-        </div>
-      </div>
-    </div>
+    <button type="button" id="lb-head" aria-expanded="false" aria-controls="lb-content"
+      style="display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+             background:transparent; border:none; padding:0; cursor:pointer;">
+      <svg id="lb-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"
+        style="width:15px; height:15px; color:var(--text-muted); flex-shrink:0;
+               transition:transform var(--dur-reveal) var(--ease);"><path d="M9 6l6 6-6 6"/></svg>
+      <span style="flex:1; min-width:0;">
+        <span style="font-size:17px; font-weight:600; letter-spacing:-0.01em; color:var(--text-primary);">Late Upload Backlog</span>
+        <span id="lb-head-sub" style="display:block; font-size:12.5px; color:var(--text-secondary); margin-top:2px;"></span>
+      </span>
+      <span id="lb-head-count"></span>
+    </button>
 
+    <div id="lb-content" style="display:none; margin-top:16px;">
     <div id="lb-setup" style="display:none; margin-bottom:12px;"></div>
 
     <div id="lb-cards" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px,1fr)); gap:11px; margin-bottom:14px;"></div>
@@ -1313,6 +1319,7 @@ html, body {
     <div style="font-size:11.5px; color:var(--text-muted); margin-top:12px;">
       Resolving an item records who did it and when. It never removes the late flag from the
       observation, and it never changes whether the review itself is done &mdash; those are separate.
+    </div>
     </div>
   </div>
 
@@ -3101,8 +3108,51 @@ function renderLbTable(rows) {
   });
 }
 
+// Open or shut, the header carries the only thing worth knowing at a
+// glance: how many are still waiting. Everything else costs a click.
+function renderLbHeader() {
+  var sub = document.getElementById('lb-head-sub');
+  var badge = document.getElementById('lb-head-count');
+  if (!sub || !badge) return;
+  var all = lateBacklogRows();
+  var un = all.filter(function (r) { return r.status === 'unresolved'; }).length;
+
+  sub.textContent = all.length
+    ? 'Every observation marked as a late upload, collected here automatically'
+    : 'Nothing marked as a late upload yet';
+
+  badge.innerHTML = un
+    ? '<span class="sbadge" style="color:' + LB_STATUS.unresolved.color + '; background:' +
+      LB_STATUS.unresolved.bg + '; border:1px solid ' + LB_STATUS.unresolved.border + ';">' +
+      un + ' unresolved</span>'
+    : (all.length
+        ? '<span class="sbadge" style="color:' + LB_STATUS.resolved.color + '; background:' +
+          LB_STATUS.resolved.bg + '; border:1px solid ' + LB_STATUS.resolved.border + ';">All resolved</span>'
+        : '');
+}
+
+function setLateBacklogOpen(open) {
+  var body = document.getElementById('lb-content');
+  var head = document.getElementById('lb-head');
+  var caret = document.getElementById('lb-caret');
+  if (!body || !head) return;
+  body.style.display = open ? 'block' : 'none';
+  head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (caret) caret.style.transform = open ? 'rotate(90deg)' : '';
+  if (open) renderLateBacklog();
+}
+
+function openLateBacklog() {
+  setLateBacklogOpen(true);
+  var card = document.getElementById('card-late-backlog');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function renderLateBacklog() {
+  renderLbHeader();
   if (!document.getElementById('lb-body')) return;
+  var content = document.getElementById('lb-content');
+  if (content && content.style.display === 'none') return;   // folded: nothing to draw
 
   // The LIST works without the table - it comes from the observations. Only
   // resolving needs the SQL, so say exactly that rather than hiding
@@ -3699,12 +3749,19 @@ function renderDtCards(rows) {
         ' <b style="color:var(--text-primary);">' + n + '</b></span>';
     };
     secondary.innerHTML =
-      '<a href="#card-late-backlog" id="dates-late-link" style="color:inherit; text-decoration:none; border-bottom:1px dotted var(--border-strong);">' +
-        item('Late uploads', c.late, UPLOAD_STATUS.late.color) + '</a>' +
+      '<button type="button" id="dates-late-link" title="Open the Late Upload Backlog" ' +
+        'style="background:none; border:none; padding:0; font:inherit; color:inherit; cursor:pointer; ' +
+        'border-bottom:1px dotted var(--border-strong);">' +
+        item('Late uploads', c.late, UPLOAD_STATUS.late.color) + '</button>' +
       item('Nothing arrived', c.nodata, UPLOAD_STATUS.nodata.color) +
       item('Missing evaluations', c.missing, UPLOAD_STATUS.missing.color) +
       (c.covered ? item('Covered by a teammate', c.covered, 'var(--text-secondary)') : '') +
       (c.untracked ? item('Not assigned', c.untracked, 'var(--text-muted)') : '');
+
+    // The late count is the one number people act on, so it opens the
+    // backlog rather than just jumping the page at a folded card.
+    var link = document.getElementById('dates-late-link');
+    if (link) link.addEventListener('click', openLateBacklog);
   }
 }
 
@@ -3975,6 +4032,11 @@ function setDatesView(v) {
   });
   var lbs = document.getElementById('lb-sort');
   if (lbs) lbs.addEventListener('change', function () { _lbSort = lbs.value; renderLateBacklog(); });
+  var lbh = document.getElementById('lb-head');
+  if (lbh) lbh.addEventListener('click', function () {
+    var body = document.getElementById('lb-content');
+    setLateBacklogOpen(!body || body.style.display === 'none');
+  });
   var lbc = document.getElementById('lb-clear');
   if (lbc) lbc.addEventListener('click', function () {
     ['lb-from', 'lb-to', 'lb-status', 'lb-search'].forEach(function (id) {
