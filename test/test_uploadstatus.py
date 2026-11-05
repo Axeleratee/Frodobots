@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 import harness as H
 
 chk = H.Checks(); errs = []
-url = H.build("app_up.html")
+url = H.build("app_up.html", config={"REST_DAYS": []})
 D = {n: H.days_ago(n) for n in range(0, 12)}
 asg = [H.assign("a1", H.CRIS, "Alpha", D[9])]
 

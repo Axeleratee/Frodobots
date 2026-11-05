@@ -966,7 +966,8 @@ html, body {
         <div>
           <div style="font-size:13px; font-weight:600; margin-bottom:2px;">Each person &middot; last 7 days</div>
           <div style="font-size:11px; color:var(--text-muted); margin-bottom:9px;">
-            Solid is their own work; the pale part was covered by a teammate.
+            How much of each person&rsquo;s workload got reviewed. Solid is their own work;
+            the pale part a teammate covered.
           </div>
           <div id="ops-rail" style="display:flex; flex-direction:column; gap:9px;"></div>
         </div>
@@ -2342,30 +2343,41 @@ function renderOpsRail() {
     return;
   }
 
-  host.innerHTML = active.map(function (r, i) {
-    // This bar answers "did THIS person do their own assigned work", which
-    // is not the same question as "was the data reviewed". A day a teammate
-    // covered is reviewed, so the bar reaches it - but in a paler tone, so
-    // it never reads as this person's own output.
-    var pct = r.coverage;                                   // own work
-    var reviewed = r.assigned ? Math.round(((r.done + r.coveredByOther) / r.assigned) * 100) : null;
-    var col = covColor(pct);
-    var own = pct === null ? 0 : pct;
-    var cov = reviewed === null ? 0 : Math.max(0, reviewed - own);
+  // The headline above counts a day as done whoever reviewed it. This row
+  // must count the same way, or the same card states two different rules.
+  // Own work does not disappear - it becomes the detail underneath, which
+  // is where "somebody else is carrying this person" stays visible.
+  active.forEach(function (r) {
+    r.reviewedCount = r.done + r.coveredByOther;
+    r.reviewedPct = r.assigned ? Math.round((r.reviewedCount / r.assigned) * 100) : null;
+    r.ownPct = r.assigned ? Math.round((r.done / r.assigned) * 100) : null;
+  });
+  active.sort(function (a, b) {
+    var ra = a.reviewedPct === null ? 101 : a.reviewedPct;
+    var rb = b.reviewedPct === null ? 101 : b.reviewedPct;
+    if (ra !== rb) return ra - rb;                 // least reviewed first
+    return (a.ownPct || 0) - (b.ownPct || 0);      // then least of it their own
+  });
 
-    var extra = [];
-    if (r.turnaround !== null) extra.push(plainLag(r.turnaround).replace('Usually reviewed', 'usually'));
+  host.innerHTML = active.map(function (r, i) {
+    var col = covColor(r.reviewedPct);
+    var own = r.ownPct === null ? 0 : r.ownPct;
+    var cov = r.reviewedPct === null ? 0 : Math.max(0, r.reviewedPct - own);
+
+    var detail = [];
+    if (r.coveredByOther) {
+      detail.push(r.done + ' their own \u00b7 ' + r.coveredByOther + ' covered by a teammate');
+    }
+    if (r.turnaround !== null) detail.push(plainLag(r.turnaround).replace('Usually reviewed', 'usually'));
 
     return '<div>' +
       '<div style="display:flex; align-items:baseline; gap:7px; font-size:12.5px;">' +
         '<span style="color:var(--text-muted); width:13px;">' + (i + 1) + '</span>' +
         '<span style="font-weight:600;">' + esc(r.username) + '</span>' +
         '<span style="flex:1;"></span>' +
-        '<span style="color:var(--text-secondary);">' + r.done + ' of ' + r.assigned +
-          (r.coveredByOther ? '<span style="color:var(--text-muted);"> +' + r.coveredByOther + ' covered</span>' : '') +
-        '</span>' +
+        '<span style="color:var(--text-secondary);">' + r.reviewedCount + ' of ' + r.assigned + '</span>' +
         '<span style="color:' + col + '; font-weight:600; min-width:38px; text-align:right;">' +
-          (pct === null ? '\u2014' : pct + '%') + '</span>' +
+          (r.reviewedPct === null ? '\u2014' : r.reviewedPct + '%') + '</span>' +
       '</div>' +
       '<div style="display:flex; height:5px; border-radius:3px; background:var(--surface-0); margin:4px 0 0 20px; overflow:hidden;">' +
         '<div style="width:' + own + '%; background:' + col + '; ' +
@@ -2373,8 +2385,8 @@ function renderOpsRail() {
         (cov ? '<div title="Reviewed by a teammate, not by ' + escAttr(r.username) + '" ' +
                'style="width:' + cov + '%; background:' + col + '; opacity:.32;"></div>' : '') +
       '</div>' +
-      (extra.length ? '<div style="font-size:11px; color:var(--text-muted); margin:3px 0 0 20px;">' +
-        esc(extra.join(' \u00b7 ')) + '</div>' : '') +
+      (detail.length ? '<div style="font-size:11px; color:var(--text-muted); margin:3px 0 0 20px;">' +
+        esc(detail.join(' \u00b7 ')) + '</div>' : '') +
       '</div>';
   }).join('') +
   (idle ? '<div style="font-size:11px; color:var(--text-muted); padding-top:3px;">' +

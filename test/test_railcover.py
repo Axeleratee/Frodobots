@@ -24,9 +24,16 @@ with sync_playwright() as pw:
     pg.click("#tab-performance"); pg.wait_for_timeout(1400)
 
     row = pg.inner_text("#ops-rail")
-    chk("shows_own_fraction", "2 of 5" in row, "| %s" % row.replace("\n", " ")[:90])
-    chk("shows_covered_count", "+1 covered" in row, "| %s" % row.replace("\n", " ")[:90])
-    chk("percent_is_own_work", "40%" in row, "| 2 of 5 is his own: %s" % row.replace("\n", " ")[:90])
+    chk("counts_reviewed_not_just_own", "3 of 5" in row,
+        "| 2 his own + 1 covered: %s" % row.replace("\n", " ")[:110])
+    chk("percent_matches_reviewed", "60%" in row, "| %s" % row.replace("\n", " ")[:110])
+    chk("detail_splits_it", "2 their own" in row and "1 covered by a teammate" in row,
+        "| %s" % row.replace("\n", " ")[:110])
+
+    # The headline and this row must agree about the same days.
+    head = pg.inner_text("#ops-headline")
+    chk("agrees_with_headline", "3 of 5" in head,
+        "| headline says %s" % head.replace("\n", " ")[:90])
 
     segs = pg.evaluate("""() => [...document.querySelectorAll('#ops-rail > div')]
         .filter(d => d.querySelector('div[style*="height:5px"]'))
