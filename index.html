@@ -1117,6 +1117,21 @@ html, body {
     <button id="btn-signout-settings" style="background:var(--surface-1); border:1px solid var(--border-strong); color:var(--text-primary);">Sign out</button>
   </div>
 
+  <div class="fb-card" id="card-robots" style="display:none; margin-bottom:1.5rem;">
+    <div style="font-size:15px; font-weight:500; margin-bottom:4px;">Robots</div>
+    <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">
+      These fill the Robot picker on the log form and the robot list in User Management. Changes apply to everyone.
+      Retiring a robot keeps all of its past observations and assignments &mdash; it just stops appearing as a choice.
+    </div>
+    <div id="robots-warning" style="display:none; font-size:12.5px; color:#e0b64a; background:var(--surface-1); border:1px solid var(--border); border-radius:8px; padding:9px 11px; margin-bottom:14px;"></div>
+    <div style="display:flex; gap:6px; margin-bottom:10px; max-width:520px;">
+      <input type="text" id="robot-new" placeholder="New robot name, e.g. Lima" maxlength="40" style="flex:1; min-width:0;">
+      <button id="btn-robot-add" style="white-space:nowrap;">Add robot</button>
+    </div>
+    <div id="robot-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(250px,1fr)); gap:6px;"></div>
+    <div id="robot-status" style="font-size:12.5px; color:var(--text-secondary); margin-top:12px; min-height:16px;"></div>
+  </div>
+
   <div class="fb-card" id="card-options" style="display:none;">
     <div style="font-size:15px; font-weight:500; margin-bottom:4px;">Task names &amp; issue types</div>
     <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">
@@ -1545,6 +1560,10 @@ function severityOf(e) {
   return worst;
 }
 
+// The robots in use before the list became editable. Used until
+// supabase-robots.sql has been run, so nothing changes in the meantime.
+const ROBOTS_BUILTIN = ['Alpha','Charlie','Echo','Fox','Godzilla','Hugo','Igor','Jackie','Kilo'];
+
 const TASK_OPTIONS = [
   'restocking fridge','kitchen organization','clothes washing','clean up the room',
   'picking trash to rubbish bin','setting the table','hang keys on a hook','hang hanger',
@@ -1637,6 +1656,8 @@ var _issueOptions = ISSUE_OPTIONS.map(function (o) {
   return { key: o[0], label: o[1], severity: (o[0] === 'none' ? 'none' : (ISSUE_SEVERITY[o[0]] || 'minor')) };
 });
 var _optionsLoaded = false;
+var _robotOptions = [];      // [{ id, key, label, retired_at, sort_order }]
+var _robotsManaged = false;  // true once the options table holds robots
 
 // 'nodata' is wired into the app's logic, so it is never editable or deletable.
 const LOCKED_ISSUE_KEYS = ['none', 'nodata'];
@@ -1649,12 +1670,20 @@ function slugifyKey(label) {
 async function loadOptions() {
   if (!sb) { applyOptions(); return; }
   try {
-    const r = await sb.from('options').select('id, kind, key, label, severity, sort_order')
+    // select('*') rather than a column list: retired_at only exists once
+    // supabase-robots.sql has run, and naming it would break the whole load
+    // (tasks and issues included) before then.
+    const r = await sb.from('options').select('*')
       .order('sort_order', { ascending: true });
     if (r.error) throw r.error;
     const rows = r.data || [];
     const tasks = rows.filter(function (o) { return o.kind === 'task'; });
     const issues = rows.filter(function (o) { return o.kind === 'issue'; });
+    const robots = rows.filter(function (o) { return o.kind === 'robot'; });
+    _robotOptions = robots.map(function (o) {
+      return { id: o.id, key: o.key, label: o.label || o.key, retired_at: o.retired_at || null, sort_order: o.sort_order || 0 };
+    });
+    _robotsManaged = robots.length > 0;
     if (tasks.length) _taskOptions = tasks.map(function (o) { return { id: o.id, key: o.key, label: o.label }; });
     if (issues.length) _issueOptions = issues.map(function (o) {
       return { id: o.id, key: o.key, label: o.label, severity: o.severity || 'minor' };
@@ -1683,7 +1712,24 @@ function applyOptions() {
     issueMS.setOptions(_issueOptions.map(function (o) { return [o.key, o.label]; }));
   }
   renderIssueFilterOptions();
+  renderRobotPicker();
+  // The filter may have been drawn before the robot list arrived.
+  if (typeof renderRobotFilter === 'function') renderRobotFilter();
   if (typeof renderOptionsAdmin === 'function') renderOptionsAdmin();
+  if (typeof renderRobotsAdmin === 'function') renderRobotsAdmin();
+}
+
+// The Robot picker on the log form: active robots, then "Other...".
+// Keeps whatever was selected if it is still offered.
+function renderRobotPicker() {
+  var sel = document.getElementById('f-robot');
+  if (!sel) return;
+  var cur = sel.value;
+  var list = activeRobots();
+  sel.innerHTML = list.map(function (r) {
+    return '<option value="' + escAttr(r) + '">' + esc(r) + '</option>';
+  }).join('') + '<option value="__other">Other\u2026</option>';
+  if (cur && (cur === '__other' || list.indexOf(cur) !== -1)) sel.value = cur;
 }
 
 // Rebuilds the "All issue types" dropdown from the current options.
@@ -1865,6 +1911,169 @@ async function deleteOption(kind, key) {
   });
 })();
 
+// ---------- Robots admin (add / retire / restore / delete) ----------
+function robotStatus(msg, danger) {
+  var el = document.getElementById('robot-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = danger ? 'var(--text-danger)' : 'var(--text-secondary)';
+  if (msg) setTimeout(function () { if (el.textContent === msg) el.textContent = ''; }, 3200);
+}
+
+function robotUsage(key) {
+  return {
+    logs: entries.filter(function (e) { return e.robot === key; }).length,
+    assignments: _assignments.filter(function (a) { return a.robot === key; }).length
+  };
+}
+
+function renderRobotsAdmin() {
+  var host = document.getElementById('robot-list');
+  if (!host) return;
+  var warn = document.getElementById('robots-warning');
+  if (warn) {
+    warn.style.display = _robotsManaged ? 'none' : 'block';
+    warn.textContent = 'Adding and retiring robots is not available yet \u2014 run supabase-robots.sql in the Supabase SQL editor once, then refresh. The current nine robots are being used for now.';
+  }
+  var add = document.getElementById('btn-robot-add');
+  if (add) add.disabled = !_robotsManaged;
+
+  var list = managedRobots().slice().sort(function (a, b) {
+    // Active first, in their usual order; retired after.
+    if (!!a.retired_at !== !!b.retired_at) return a.retired_at ? 1 : -1;
+    return (a.sort_order - b.sort_order) || a.key.localeCompare(b.key);
+  });
+
+  host.innerHTML = list.map(function (o) {
+    var u = robotUsage(o.key);
+    var unused = !u.logs && !u.assignments;
+    var meta = u.logs ? u.logs + ' log' + (u.logs === 1 ? '' : 's') : 'no logs yet';
+    var badge = o.retired_at
+      ? '<span class="umark" title="Retired ' + escAttr(plainDate(String(o.retired_at).slice(0, 10))) + '">Retired</span>' : '';
+    var btns = !_robotsManaged ? '' :
+      (o.retired_at
+        ? '<button class="robot-act" data-act="restore" data-key="' + escAttr(o.key) + '" style="font-size:11.5px; padding:3px 9px;">Restore</button>'
+        : '<button class="robot-act" data-act="retire" data-key="' + escAttr(o.key) + '" style="font-size:11.5px; padding:3px 9px;">Retire</button>') +
+      (unused
+        ? '<button class="robot-act" data-act="delete" data-key="' + escAttr(o.key) + '" title="Only possible while it has no logs or assignments" style="font-size:11.5px; padding:3px 9px; color:var(--text-danger);">Delete</button>'
+        : '');
+    return '<div data-robot="' + escAttr(o.key) + '" style="display:flex; align-items:center; gap:7px; padding:7px 9px; background:var(--surface-1); border:1px solid var(--border); border-radius:8px; font-size:12.5px;' +
+      (o.retired_at ? ' opacity:.62;' : '') + '">' +
+      '<span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;"><b style="font-weight:600;">' + esc(o.label) + '</b> ' + badge +
+      '<span style="display:block; font-size:11px; color:var(--text-muted); margin-top:1px;">' + esc(meta) + '</span></span>' +
+      btns + '</div>';
+  }).join('');
+
+  Array.prototype.forEach.call(host.querySelectorAll('.robot-act'), function (b) {
+    b.addEventListener('click', function () {
+      if (b.dataset.act === 'retire') retireRobot(b.dataset.key);
+      else if (b.dataset.act === 'restore') restoreRobot(b.dataset.key);
+      else deleteRobot(b.dataset.key);
+    });
+  });
+}
+
+// Every view that lists robots, redrawn after the list changes.
+function refreshRobotViews() {
+  renderRobotPicker();
+  if (typeof renderRobotFilter === 'function') renderRobotFilter();
+  if (typeof refreshTeamViews === 'function') refreshTeamViews();
+  renderRobotsAdmin();
+}
+
+async function addRobot() {
+  if (!_robotsManaged) { robotStatus('Run supabase-robots.sql first.', true); return; }
+  var input = document.getElementById('robot-new');
+  var name = (input.value || '').trim().replace(/\s+/g, ' ');
+  if (!name) { robotStatus('Type a robot name first.', true); return; }
+  if (name.length > 40) { robotStatus('Please keep the name under 40 characters.', true); return; }
+  if (name === '__other') { robotStatus('Please choose another name.', true); return; }
+  var same = _robotOptions.filter(function (o) { return o.key.toLowerCase() === name.toLowerCase(); })[0];
+  if (same) {
+    robotStatus(same.retired_at ? same.key + ' already exists but is retired \u2014 use Restore instead.'
+                                : same.key + ' is already on the list.', true);
+    return;
+  }
+  var maxOrder = _robotOptions.reduce(function (n, o) { return Math.max(n, o.sort_order || 0); }, 0);
+  try {
+    var r = await sb.from('options').insert({ kind: 'robot', key: name, label: name, sort_order: maxOrder + 10 });
+    if (r.error) throw r.error;
+    input.value = '';
+    await loadOptions();
+    refreshRobotViews();
+    robotStatus(name + ' added. It is now in the log form and User Management.');
+  } catch (e) {
+    robotStatus('Could not add: ' + (e && e.message ? e.message : 'unknown error'), true);
+  }
+}
+
+async function retireRobot(key) {
+  var today = localToday();
+  var open = _assignments.filter(function (a) {
+    return a.robot === key && (!a.ends_on || a.ends_on >= today);
+  });
+  var u = robotUsage(key);
+  var msg = 'Retire ' + key + '?\n\nIt will stop appearing in the log form and in User Management.' +
+    (u.logs === 1 ? ' Its 1 past log stays exactly as it is.'
+      : u.logs ? ' Its ' + u.logs + ' past logs stay exactly as they are.' : '') +
+    ' You can restore it at any time.';
+  if (open.length) {
+    var who = open.map(function (a) { return teamName(a.user_id) || 'someone'; })
+      .filter(function (n, i, arr) { return arr.indexOf(n) === i; }).join(', ');
+    msg += '\n\nNote: ' + who + ' still ' + (open.length === 1 ? 'has an open assignment' : 'have open assignments') +
+      ' on ' + key + '. Retiring does not end it \u2014 end it in User Management if this robot is no longer reviewed, or it will keep showing as Pending.';
+  }
+  if (!window.confirm(msg)) return;
+  try {
+    var r = await sb.from('options').update({ retired_at: new Date().toISOString() }).eq('kind', 'robot').eq('key', key);
+    if (r.error) throw r.error;
+    await loadOptions();
+    refreshRobotViews();
+    robotStatus(key + ' retired. Its history is unchanged.');
+  } catch (e) {
+    robotStatus('Could not retire: ' + (e && e.message ? e.message : 'unknown error'), true);
+  }
+}
+
+async function restoreRobot(key) {
+  try {
+    var r = await sb.from('options').update({ retired_at: null }).eq('kind', 'robot').eq('key', key);
+    if (r.error) throw r.error;
+    await loadOptions();
+    refreshRobotViews();
+    robotStatus(key + ' restored.');
+  } catch (e) {
+    robotStatus('Could not restore: ' + (e && e.message ? e.message : 'unknown error'), true);
+  }
+}
+
+// Deleting is only for a mistake (a typo, a robot added by accident):
+// once a robot has any logs or assignments, the button is not shown and
+// this refuses too, so history can never lose its robot.
+async function deleteRobot(key) {
+  var u = robotUsage(key);
+  if (u.logs || u.assignments) { robotStatus(key + ' has history, so it can only be retired.', true); return; }
+  if (!window.confirm('Delete ' + key + ' from the list?\n\nIt has no logs or assignments, so nothing else is affected.')) return;
+  try {
+    var r = await sb.from('options').delete().eq('kind', 'robot').eq('key', key);
+    if (r.error) throw r.error;
+    await loadOptions();
+    refreshRobotViews();
+    robotStatus(key + ' deleted.');
+  } catch (e) {
+    robotStatus('Could not delete: ' + (e && e.message ? e.message : 'unknown error'), true);
+  }
+}
+
+(function () {
+  var b = document.getElementById('btn-robot-add');
+  if (b) b.addEventListener('click', addRobot);
+  var i = document.getElementById('robot-new');
+  if (i) i.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); addRobot(); }
+  });
+})();
+
 const STORAGE_KEY = 'behavior-entries';   // legacy local key — used only for one-time import
 
 // ---------- Team roster ----------
@@ -1964,7 +2173,7 @@ function renderAssignOptions() {
   var rSel = document.getElementById('assign-robot');
   if (rSel) {
     var curR = rSel.value;
-    rSel.innerHTML = allRobots().map(function (r) {
+    rSel.innerHTML = activeRobots().map(function (r) {
       return '<option value="' + escAttr(r) + '"' + (r === curR ? ' selected' : '') + '>' + esc(r) + '</option>';
     }).join('');
   }
@@ -2704,6 +2913,7 @@ function refreshTeamViews() {
   if (typeof renderDateTable === 'function') renderDateTable();
   if (typeof renderTeamOps === 'function') renderTeamOps();
   if (typeof renderLateBacklog === 'function') renderLateBacklog();
+  if (typeof renderRobotsAdmin === 'function') renderRobotsAdmin();   // usage counts
 }
 
 function currentUserId() {
@@ -2796,7 +3006,7 @@ function renderTrkOptions() {
   var nB = document.getElementById('trk-n-robot');
   if (nB) {
     var curNB = nB.value;
-    nB.innerHTML = allRobots().map(function (r) {
+    nB.innerHTML = activeRobots().map(function (r) {
       return '<option value="' + escAttr(r) + '"' + (r === curNB ? ' selected' : '') + '>' + esc(r) + '</option>';
     }).join('');
   }
@@ -3403,11 +3613,12 @@ async function dbDelete(id) {
 
 function renderRobotFilter() {
   const sel = document.getElementById('filter-robot');
-  const known = ['Alpha','Charlie','Echo','Fox','Godzilla','Hugo','Igor','Jackie','Kilo'];
-  const extra = [...new Set(entries.map(e => e.robot))].filter(r => !known.includes(r));
+  const cur = sel.value;
   sel.innerHTML = '<option value="">All robots</option>' +
-    [...known, ...extra].map(r => `<option value="${r}">${r}</option>`).join('');
+    allRobots().map(r => `<option value="${escAttr(r)}">${esc(r)}${isRetiredRobot(r) ? ' (retired)' : ''}</option>`).join('');
+  if (cur) sel.value = cur;
   renderLogFilterOptions();
+  if (typeof renderRobotsAdmin === 'function') renderRobotsAdmin();   // usage counts follow the logs
 }
 
 function renderLogFilterOptions() {
@@ -4535,6 +4746,8 @@ function applyRoleUI() {
   if (perfTab) perfTab.style.display = (currentRole === 'admin') ? '' : 'none';
   var optCard = document.getElementById('card-options');
   if (optCard) optCard.style.display = (currentRole === 'admin') ? '' : 'none';
+  var robCard = document.getElementById('card-robots');
+  if (robCard) robCard.style.display = (currentRole === 'admin') ? '' : 'none';
   if (!canLog()) { var mb = document.getElementById('migrate-bar'); if (mb) mb.style.display = 'none'; }
   var who = document.getElementById('auth-who');
   if (who) {
@@ -4613,11 +4826,34 @@ function daysBetween(fromISO, toISO) {
   return Math.round((b - a) / 86400000);
 }
 
+// ---------- The robot list ----------
+// Three kinds of robot name exist:
+//   active  - in the managed list and not retired: offered as a choice
+//   retired - in the managed list but retired: never offered, still shown
+//             wherever its history is (filters, overviews, reports)
+//   extra   - only ever typed via "Other..." on the log form
+function managedRobots() {
+  if (_robotsManaged) return _robotOptions;
+  return ROBOTS_BUILTIN.map(function (k, i) { return { key: k, label: k, retired_at: null, sort_order: (i + 1) * 10 }; });
+}
+function activeRobots() {
+  return managedRobots().filter(function (o) { return !o.retired_at; }).map(function (o) { return o.key; });
+}
+function isRetiredRobot(name) {
+  return managedRobots().some(function (o) { return o.key === name && o.retired_at; });
+}
+function robotsInLogs() {
+  return [...new Set(entries.map(function (e) { return e.robot; }))].filter(Boolean);
+}
+// Everything with a reason to appear in a filter or overview: the active
+// robots, then retired ones that still have logs, then any typed-in names.
 function allRobots() {
-  var known = ['Alpha','Charlie','Echo','Fox','Godzilla','Hugo','Igor','Jackie','Kilo'];
-  var extra = [...new Set(entries.map(function (e) { return e.robot; }))]
-    .filter(function (r) { return r && known.indexOf(r) === -1; });
-  return known.concat(extra.sort());
+  var known = managedRobots().map(function (o) { return o.key; });
+  var logged = robotsInLogs();
+  var retired = managedRobots().filter(function (o) { return o.retired_at && logged.indexOf(o.key) !== -1; })
+    .map(function (o) { return o.key; });
+  var extra = logged.filter(function (r) { return known.indexOf(r) === -1; }).sort();
+  return activeRobots().concat(retired, extra);
 }
 
 // An entry flagged "no data / not evaluated" does NOT count as coverage.
@@ -4695,7 +4931,7 @@ function renderCoverage() {
     if (!lastByRobot[e.robot] || e.date > lastByRobot[e.robot]) lastByRobot[e.robot] = e.date;
   });
 
-  var rows = allRobots().map(function (r) {
+  var rows = activeRobots().map(function (r) {
     var last = lastByRobot[r] || null;
     var ago = last ? daysBetween(last, today) : null;
     return { robot: r, last: last, ago: ago, stale: (last === null || ago >= windowDays) };
@@ -4963,6 +5199,13 @@ function startEdit(id) {
 
   const robotSel = document.getElementById('f-robot');
   const other = document.getElementById('f-robot-other');
+  // A retired robot is not offered for new logs, but an old log on it
+  // must still edit as that robot rather than turning into "Other".
+  if (isRetiredRobot(e.robot) && ![...robotSel.options].some(o => o.value === e.robot)) {
+    const opt = document.createElement('option');
+    opt.value = e.robot; opt.textContent = e.robot + ' (retired)';
+    robotSel.insertBefore(opt, robotSel.querySelector('option[value="__other"]'));
+  }
   const known = [...robotSel.options].map(o => o.value);
   if (known.includes(e.robot)) {
     robotSel.value = e.robot;
@@ -5181,10 +5424,8 @@ function trendClause(name, trend) {
 function renderProgBotOptions() {
   const sel = document.getElementById('prog-bot');
   const cur = sel.value;
-  const known = ['Alpha','Charlie','Echo','Fox','Godzilla','Hugo','Igor','Jackie','Kilo'];
-  const extra = [...new Set(entries.map(e => e.robot))].filter(r => !known.includes(r));
-  const withData = [...new Set(entries.map(e => e.robot))];
-  const list = [...known, ...extra].filter(r => withData.includes(r));
+  const withData = robotsInLogs();
+  const list = allRobots().filter(r => withData.includes(r));
   sel.innerHTML = '<option value="">Select bot…</option>' +
     list.map(r => `<option value="${r}"${r===cur?' selected':''}>${r}</option>`).join('');
 }
@@ -6285,7 +6526,8 @@ function buildReportPayload({ start, end, inRange, byBot, stats, ranked }) {
     }))
   };
 
-  summary.coverage = coverageSummary(inRange, start, end, allRobots());
+  summary.coverage = coverageSummary(inRange, start, end,
+    [...new Set(activeRobots().concat(inRange.map(e => e.robot).filter(Boolean)))]);
 
   return { summary, observations };
 }
