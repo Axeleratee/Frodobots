@@ -610,6 +610,28 @@ html, body {
   .fb-app .mtiles-compact .mtile-sub { display: none; }
 }
 
+/* Bot ranking: one row per bot, a single-hue bar for magnitude. */
+.fb-app .rank-row {
+  display: grid; grid-template-columns: 30px minmax(120px, 210px) 1fr 52px; align-items: center;
+  gap: 10px; width: 100%; padding: 7px 8px; border-radius: 8px; text-align: left;
+  background: transparent; border: none; cursor: pointer; color: inherit; font: inherit;
+  transition: background var(--dur-micro) var(--ease);
+}
+.fb-app button.rank-row:hover, .fb-app button.rank-row:focus-visible { background: var(--surface-1); }
+.fb-app button.rank-row:active { transform: none; }
+.fb-app .rank-pos { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+.fb-app .rank-row.is-top .rank-pos { color: var(--text-primary); font-weight: 600; }
+.fb-app .rank-bot { font-size: 13px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.fb-app .rank-meta { display: block; font-size: 11px; font-weight: 400; color: var(--text-muted); margin-top: 1px; line-height: 1.35; }
+.fb-app .rank-track { display: block; height: 8px; border-radius: 4px; background: var(--surface-1); overflow: hidden; }
+.fb-app .rank-fill { display: block; height: 100%; border-radius: 4px; background: #7aa7ff; transform-origin: left center;
+  transition: width var(--dur-reveal) var(--ease); }
+.fb-app .rank-val { font-size: 13px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.fb-app .rank-row.is-zero .rank-bot, .fb-app .rank-row.is-zero .rank-val { color: var(--text-muted); font-weight: 400; }
+@media (max-width: 640px) {
+  .fb-app .rank-row { grid-template-columns: 24px minmax(96px, 46%) 1fr 34px; gap: 8px; }
+}
+
 /* Reduced motion is a hard stop, not a slowdown: no transitions, no
    keyframes, and nothing that starts without being asked. */
 @media (prefers-reduced-motion: reduce) {
@@ -732,6 +754,32 @@ html, body {
       <div style="font-size:13px; font-weight:600; margin-bottom:3px;">Data availability</div>
       <div id="cov-avail-summary" style="font-size:12px; color:var(--text-secondary); margin-bottom:9px;"></div>
       <div id="cov-avail" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:7px;"></div>
+    </div>
+  </div>
+
+  <div class="fb-card" id="card-rank">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+      <div style="margin-right:auto;">
+        <div style="font-size:15px; font-weight:500;">Bot ranking</div>
+        <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Which bots have the most logged, highest first</div>
+      </div>
+      <select id="rank-metric" aria-label="Rank by" style="width:auto; font-size:12.5px; padding:5px 26px 5px 9px;">
+        <option value="obs" selected>Observations</option>
+        <option value="issues">Issues found</option>
+        <option value="days">Days with data</option>
+      </select>
+      <select id="rank-period" aria-label="Period" style="width:auto; font-size:12.5px; padding:5px 26px 5px 9px;">
+        <option value="week">This week</option>
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="month">This month</option>
+        <option value="all">All time</option>
+      </select>
+    </div>
+    <div id="rank-summary" style="font-size:12.5px; color:var(--text-secondary); margin:8px 0 10px;"></div>
+    <div id="rank-list" style="display:flex; flex-direction:column; gap:1px;"></div>
+    <div style="font-size:11.5px; color:var(--text-muted); margin-top:10px;">
+      Observations count logs with data; &ldquo;no data&rdquo; logs are shown separately and never raise a rank. Click a bot to see its logs.
     </div>
   </div>
 
@@ -3619,6 +3667,7 @@ function renderRobotFilter() {
   if (cur) sel.value = cur;
   renderLogFilterOptions();
   if (typeof renderRobotsAdmin === 'function') renderRobotsAdmin();   // usage counts follow the logs
+  if (typeof renderBotRanking === 'function') renderBotRanking();
 }
 
 function renderLogFilterOptions() {
@@ -3890,6 +3939,146 @@ function renderDateMatrix(weeks, statusF) {
 }
 
 // Shared by the heatmap and the list: filter the log table down to one date.
+/* =====================================================================
+   BOT RANKING  -  which bots have the most logged in a period.
+
+   Three ways to rank, all from the same logs:
+     obs     observations with data (a "no data" log is not an observation)
+     issues  observations with at least one real behaviour issue
+     days    distinct dates that had at least one observation with data
+   Bots in use are always listed, even at zero, so the bottom of the list
+   is visible too. Retired or typed-in bots appear only if they logged
+   something in the period. Ties share a rank (1, 2, 2, 4).
+   ===================================================================== */
+function rankRange(period) {
+  var today = localToday();
+  if (period === 'all') return { from: '', to: '' };
+  if (period === 'month') return { from: today.slice(0, 8) + '01', to: today };
+  if (period === 'week') {
+    var dow = new Date(today + 'T00:00:00').getDay();       // 0 = Sunday
+    return { from: isoShift(today, -((dow + 6) % 7)), to: today };   // from Monday
+  }
+  var n = parseInt(period, 10) || 30;
+  return { from: isoShift(today, -(n - 1)), to: today };
+}
+
+function botRanking(period, metric) {
+  var r = rankRange(period);
+  var inRange = entries.filter(function (e) {
+    return e.robot && (!r.from || e.date >= r.from) && (!r.to || e.date <= r.to);
+  });
+  var stats = {};
+  var touch = function (bot) {
+    return stats[bot] || (stats[bot] = { bot: bot, obs: 0, issues: 0, nodata: 0, days: {}, last: '' });
+  };
+  activeRobots().forEach(touch);
+  inRange.forEach(function (e) {
+    var st = touch(e.robot);
+    if (!isEvaluated(e)) { st.nodata++; return; }
+    st.obs++;
+    st.days[e.date] = true;
+    if (e.date > st.last) st.last = e.date;
+    var sev = severityOf(e);
+    if (sev !== 'none' && sev !== 'nodata') st.issues++;
+  });
+  var rows = Object.keys(stats).map(function (k) {
+    var st = stats[k];
+    st.dayCount = Object.keys(st.days).length;
+    st.value = metric === 'issues' ? st.issues : metric === 'days' ? st.dayCount : st.obs;
+    return st;
+  });
+  rows.sort(function (a, b) {
+    return (b.value - a.value) || (b.obs - a.obs) || a.bot.localeCompare(b.bot);
+  });
+  var prev = null, pos = 0;
+  rows.forEach(function (row, i) {
+    if (row.value !== prev) { pos = i + 1; prev = row.value; }
+    row.rank = row.value > 0 ? pos : null;
+  });
+  return { rows: rows, range: r, total: rows.reduce(function (n, x) { return n + x.value; }, 0) };
+}
+
+var RANK_UNIT = {
+  obs:    ['observation', 'observations'],
+  issues: ['issue found', 'issues found'],
+  days:   ['day with data', 'days with data']
+};
+
+function renderBotRanking() {
+  var host = document.getElementById('rank-list');
+  if (!host) return;
+  var metric = (document.getElementById('rank-metric') || {}).value || 'obs';
+  var period = (document.getElementById('rank-period') || {}).value || '30';
+  var res = botRanking(period, metric);
+  var rows = res.rows;
+  var max = rows.reduce(function (m, x) { return Math.max(m, x.value); }, 0);
+  var unit = RANK_UNIT[metric] || RANK_UNIT.obs;
+  var plural = function (n, u) { return n + ' ' + (n === 1 ? u[0] : u[1]); };
+
+  var sum = document.getElementById('rank-summary');
+  if (sum) {
+    if (!max) {
+      sum.textContent = 'Nothing logged in this period yet.';
+    } else {
+      var top = rows[0];
+      var tied = rows.filter(function (x) { return x.value === top.value; }).map(function (x) { return x.bot; });
+      // "Days with data" do not add up to a meaningful total, so no share.
+      sum.textContent = metric === 'days'
+        ? 'Most consistent: ' + tied.join(', ') + ' \u2014 ' + plural(top.value, unit) + '.'
+        : plural(res.total, unit) + ' across ' + rows.filter(function (x) { return x.value; }).length +
+          ' bot' + (rows.filter(function (x) { return x.value; }).length === 1 ? '' : 's') +
+          ' \u00b7 Top: ' + tied.join(', ') + ' (' + top.value +
+          (res.total ? ', ' + Math.round(top.value / res.total * 100) + '%' : '') + ')';
+    }
+  }
+
+  host.innerHTML = rows.map(function (x) {
+    var pct = max ? Math.round(x.value / max * 1000) / 10 : 0;
+    var meta = [];
+    if (metric !== 'obs') meta.push(plural(x.obs, RANK_UNIT.obs));
+    if (metric !== 'issues' && x.issues) meta.push(plural(x.issues, RANK_UNIT.issues));
+    if (metric !== 'days' && x.dayCount) meta.push(plural(x.dayCount, RANK_UNIT.days));
+    if (x.nodata) meta.push(x.nodata + ' no data');
+    if (!x.value && !x.nodata && !x.obs) meta = ['nothing logged'];
+    if (isRetiredRobot(x.bot)) meta.unshift('retired');
+    var tip = x.bot + ': ' + plural(x.value, unit) + (x.last ? ' \u00b7 last logged ' + plainDate(x.last) : '');
+    return '<button type="button" class="rank-row' + (x.rank === 1 ? ' is-top' : '') + (x.value ? '' : ' is-zero') + '" ' +
+      'data-bot="' + escAttr(x.bot) + '" title="' + escAttr(tip) + '">' +
+      '<span class="rank-pos">' + (x.rank ? '#' + x.rank : '\u2014') + '</span>' +
+      '<span class="rank-bot">' + esc(x.bot) + '<span class="rank-meta">' + esc(meta.join(' \u00b7 ')) + '</span></span>' +
+      '<span class="rank-track"><span class="rank-fill" style="width:' + pct + '%;"></span></span>' +
+      '<span class="rank-val">' + x.value + '</span>' +
+      '</button>';
+  }).join('');
+
+  Array.prototype.forEach.call(host.querySelectorAll('.rank-row'), function (b) {
+    b.addEventListener('click', function () { openLogsForRange(b.dataset.bot, res.range.from, res.range.to); });
+  });
+}
+
+// Open Logged Observations filtered to one bot and a date range.
+function openLogsForRange(bot, from, to) {
+  ['filter-robot','filter-task','filter-issue','filter-user','filter-search','filter-late'].forEach(function (id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  var rf = document.getElementById('filter-robot'); if (rf && bot) rf.value = bot;
+  var f = document.getElementById('filter-from'); if (f) f.value = from || '';
+  var t = document.getElementById('filter-to'); if (t) t.value = to || '';
+  render();
+  if (typeof renderAuditFiltered === 'function') renderAuditFiltered();
+  showPage('observations');
+  setObsOpen(true);
+  var card = document.getElementById('card-obs');
+  if (card) setTimeout(function () { card.scrollIntoView({ behavior: MOTION_OFF ? 'auto' : 'smooth', block: 'start' }); }, 60);
+}
+
+(function () {
+  ['rank-metric', 'rank-period'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', renderBotRanking);
+  });
+})();
+
 function focusLogsOnDate(dateISO, bot, obsId) {
   ['filter-robot','filter-task','filter-issue','filter-user','filter-search','filter-late'].forEach(function (id) {
     var el = document.getElementById(id); if (el) el.value = '';
