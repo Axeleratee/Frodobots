@@ -2176,9 +2176,12 @@ var _assignLoaded = false;
 async function loadAssignments() {
   if (!sb) return;
   try {
-    const { data, error } = await sb.from('assignments')
-      .select('id, user_id, robot, starts_on, ends_on, note')
-      .order('starts_on', { ascending: false });
+    const { data, error } = await fetchAllRows(function () {
+      return sb.from('assignments')
+        .select('id, user_id, robot, starts_on, ends_on, note')
+        .order('starts_on', { ascending: false })
+        .order('id', { ascending: true });
+    });
     if (error) throw error;
     _assignments = data || [];
     _assignLoaded = true;
@@ -3309,9 +3312,12 @@ const LB_STATUS = {
 async function loadLateEvents() {
   if (!sb) return;
   try {
-    const { data, error } = await sb.from('late_backlog_events')
-      .select('id, observation_id, status, note, created_at, created_by')
-      .order('created_at', { ascending: false });
+    const { data, error } = await fetchAllRows(function () {
+      return sb.from('late_backlog_events')
+        .select('id, observation_id, status, note, created_at, created_by')
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true });
+    });
     if (error) throw error;
     _lateEvents = data || [];
     _lateLoaded = true;
@@ -3615,13 +3621,48 @@ function exportTrackerCSV() {
 }
 
 // ---------- Supabase data layer (shared team log) ----------
+
+// Supabase returns at most a fixed number of rows per request (1,000 by
+// default), and says nothing when it stops early. Once a table grows past
+// that, a plain select silently drops whatever is past the cut - for an
+// oldest-first query, that is the newest rows. So every table that keeps
+// growing is read in pages until a page comes back empty.
+//
+// build() must return a fresh query with a stable order each time. The
+// window advances by however many rows actually came back, so a server
+// configured with a smaller cap than 1,000 is still read completely.
+var PAGE_ROWS = 1000;
+async function fetchAllRows(build) {
+  var all = [], from = 0, guard = 0;
+  while (guard++ < 2000) {
+    var r = await build().range(from, from + PAGE_ROWS - 1);
+    if (r.error) return { data: null, error: r.error };
+    var got = r.data || [];
+    if (!got.length) break;
+    all = all.concat(got);
+    from += got.length;
+  }
+  // A row written while paging can shift a later page by one; drop repeats.
+  var seen = {};
+  all = all.filter(function (row) {
+    if (row == null || row.id == null) return true;
+    if (seen[row.id]) return false;
+    seen[row.id] = true;
+    return true;
+  });
+  return { data: all, error: null };
+}
+
 async function loadEntries() {
   try {
     if (!sb) { entries = []; }
     else {
-      const { data, error } = await sb.from('observations')
-        .select('id, entry, created_at, created_by')
-        .order('created_at', { ascending: true });
+      const { data, error } = await fetchAllRows(function () {
+        return sb.from('observations')
+          .select('id, entry, created_at, created_by')
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true });
+      });
       if (error) throw error;
       // _by is the real user id and _at is when the row was written. Both live
       // on the table, not inside the JSON blob, so neither can be edited by
@@ -4747,7 +4788,10 @@ async function loadAuditLog() {
   var list = document.getElementById('audit-list');
   if (!list || !sb) return;
   try {
-    var r = await sb.from('audit').select('id, created_at, actor, action, robot, obs_date').order('created_at', { ascending: false });
+    var r = await fetchAllRows(function () {
+      return sb.from('audit').select('id, created_at, actor, action, robot, obs_date')
+        .order('created_at', { ascending: false }).order('id', { ascending: true });
+    });
     if (r.error) throw r.error;
     _auditRows = r.data || [];
     renderAuditFiltered();
@@ -6179,7 +6223,10 @@ async function loadReportHistory() {
   var list = document.getElementById('history-list');
   if (!list || !sb) return;
   try {
-    var r = await sb.from('reports').select('id, created_at, period_from, period_to, model, author, content').order('created_at', { ascending: false });
+    var r = await fetchAllRows(function () {
+      return sb.from('reports').select('id, created_at, period_from, period_to, model, author, content')
+        .order('created_at', { ascending: false }).order('id', { ascending: true });
+    });
     if (r.error) throw r.error;
     _reportRows = r.data || [];
     renderHistoryList(_reportRows);

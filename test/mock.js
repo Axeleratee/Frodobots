@@ -49,8 +49,11 @@
       delete() { b.op = 'delete'; return thenable; },
       eq(col, val) { b.filters.push({ col, val, op: 'eq' }); return thenable; },
       is(col, val) { b.filters.push({ col, val, op: 'is' }); return thenable; },
-      order() { return run(); },
-      limit() { return run(); },
+      // Chainable like the real client: order/limit/range return the builder,
+      // and the query runs when awaited.
+      order() { return thenable; },
+      limit(n) { b.limit = n; return thenable; },
+      range(from, to) { b.range = [from, to]; return thenable; },
       single() { return run().then(r => ({ data: (r.data && r.data[0]) || null, error: r.error })); },
       maybeSingle() { return run().then(r => ({ data: (r.data && r.data[0]) || null, error: r.error })); },
       then(res, rej) { return run().then(res, rej); }
@@ -80,6 +83,12 @@
           if (b.table === 'options') {
             rows = rows.slice().sort((x, y) => (x.sort_order || 0) - (y.sort_order || 0));
           }
+          // Like Supabase (PostgREST max-rows): one response never carries more
+          // than MAX rows, whatever was asked for. range() picks the window.
+          const MAX = parseInt(LS.getItem('__mock_max_rows') || '1000', 10);
+          if (b.range) rows = rows.slice(b.range[0], b.range[1] + 1);
+          if (b.limit != null) rows = rows.slice(0, b.limit);
+          rows = rows.slice(0, MAX);
           return resolve({ data: rows, error: null });
         }
 
