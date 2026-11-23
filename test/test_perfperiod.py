@@ -39,7 +39,7 @@ with sync_playwright() as pw:
     pg.click("#tab-performance"); pg.wait_for_timeout(1300)
 
     # ---- overview ----
-    chk("overview_has_buttons", pg.locator(".perf-period .perf-win").count() == 4)
+    chk("overview_has_buttons", pg.locator(".perf-period .perf-win").count() == 5)
     chk("default_30d", active_chip(pg, ".perf-period") == "30D")
     chk("label_says_period", "Last 30 days" in pg.inner_text("#perf-period-label"))
     chk("30d_count", logs_for(pg, "cris") == 13, "| %s" % logs_for(pg, "cris"))
@@ -55,7 +55,7 @@ with sync_playwright() as pw:
     # ---- profile ----
     pg.click('.perf-row[data-user="cris"]'); pg.wait_for_timeout(500)
     chk("profile_open", pg.locator("#perf-detail").is_visible())
-    chk("profile_has_buttons", pg.locator("#perf-detail .perf-win").count() == 4)
+    chk("profile_has_buttons", pg.locator("#perf-detail .perf-win").count() == 5)
     chk("profile_shows_current", active_chip(pg, "#perf-detail") == "All time")
 
     pg.click('#perf-detail .perf-win[data-win="30"]'); pg.wait_for_timeout(400)
@@ -77,9 +77,36 @@ with sync_playwright() as pw:
     chk("activity_local_time", (D[0] + " 11:05") in pg.inner_text("#perf-detail"),
         "| %s" % pg.inner_text("#perf-detail")[-200:])
 
+    # ---- custom range, inside the profile ----
+    def set_range(scope, f, t):
+        pg.evaluate("""([s, f, t]) => { const box = document.querySelector(s + ' .perf-from').closest('span');
+            box.querySelector('.perf-from').value = f; box.querySelector('.perf-to').value = t;
+            box.querySelector('.perf-to').dispatchEvent(new Event('change', { bubbles: true })); }""", [scope, f, t])
+        pg.wait_for_timeout(400)
+    pg.click('#perf-detail .perf-win[data-win="custom"]'); pg.wait_for_timeout(400)
+    chk("custom_shows_dates", pg.locator("#perf-detail .perf-from").count() == 1)
+    chk("custom_defaults_30d", pg.input_value("#perf-detail .perf-from") == D[29] and pg.input_value("#perf-detail .perf-to") == D[0])
+    chk("custom_default_count", stat(pg, "Observations logged") == 13)
+    set_range("#perf-detail", D[19], D[10])
+    chk("custom_range_count", stat(pg, "Observations logged") == 10, "| %s" % stat(pg, "Observations logged"))
+    chk("custom_end_respected", "Alpha" not in pg.inner_text("#perf-detail").split("Bots covered")[1].split("Recent")[0],
+        "| logs after the end date must not count")
+    chk("custom_daily_bars", bars(pg) == 10, "| %d" % bars(pg))
+    chk("custom_label", "10 days" in pg.inner_text("#perf-detail"))
+    chk("still_in_profile", pg.locator("#perf-detail").is_visible())
+    set_range("#perf-detail", D[10], D[80])            # reversed on purpose
+    chk("reversed_dates_swapped", pg.input_value("#perf-detail .perf-from") == D[80] and
+        pg.input_value("#perf-detail .perf-to") == D[10])
+    chk("custom_long_count", stat(pg, "Observations logged") == 14, "| %s" % stat(pg, "Observations logged"))
+    chk("custom_long_weekly", bars(pg) == 11 and "per week" in pg.inner_text("#perf-detail"), "| %d" % bars(pg))
+
     # ---- back keeps the chosen period ----
     pg.click("#perf-back"); pg.wait_for_timeout(300)
-    chk("back_keeps_period", active_chip(pg, ".perf-period") == "90D" and logs_for(pg, "cris") == 18)
+    chk("back_keeps_period", active_chip(pg, ".perf-period") == "Custom" and logs_for(pg, "cris") == 14,
+        "| %s %s" % (active_chip(pg, ".perf-period"), logs_for(pg, "cris")))
+    chk("overview_shows_custom_dates", pg.input_value(".perf-period .perf-from") == D[80])
+    pg.click('.perf-period .perf-win[data-win="30"]'); pg.wait_for_timeout(300)
+    chk("back_to_preset", logs_for(pg, "cris") == 13 and pg.locator(".perf-period .perf-from").count() == 0)
 
     # ---- phone ----
     m = br.new_context(viewport={"width": 390, "height": 844}, timezone_id="Asia/Manila").new_page()

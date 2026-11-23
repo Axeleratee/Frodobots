@@ -1104,6 +1104,7 @@ html, body {
           <option value="30" selected>Last 30 days</option>
           <option value="90">Last 90 days</option>
           <option value="0">All time</option>
+          <option value="custom">Custom</option>
         </select>
       </div>
       <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">Activity of every user, measured from logged observations, edit history, and generated reports. <span id="perf-period-label" style="color:var(--text-muted);"></span></div>
@@ -5808,32 +5809,61 @@ function perfDisplayName(email, id) {
 }
 
 // The period every User Performance number is counted over. The hidden
-// #perf-window select holds it; the 7D / 30D / 90D / All time buttons on
-// the overview and on each profile only set it. Days are local days -
+// #perf-window select holds which kind (7 / 30 / 90 days, 0 = all time,
+// or "custom"); a custom range keeps its two dates here. The buttons on
+// the overview and on each profile only set these. Days are local days -
 // toISOString() would start the window a day early before 8 AM in Manila.
-function perfWindowDays() {
+var _perfCustom = { from: '', to: '' };
+
+function perfWindowKind() {
   var sel = document.getElementById('perf-window');
-  return parseInt((sel && sel.value) || '30', 10) || 0;     // 0 = all time
+  return (sel && sel.value) || '30';
 }
-function perfWindowStart() {
-  var days = perfWindowDays();
-  if (!days) return null;                     // all time
-  return isoShift(localToday(), -(days - 1));
+// { from, to } as YYYY-MM-DD; null on a side means "no limit".
+function perfRange() {
+  var k = perfWindowKind(), today = localToday();
+  if (k === 'custom') {
+    if (!_perfCustom.from || !_perfCustom.to) _perfCustom = { from: isoShift(today, -29), to: today };
+    return { from: _perfCustom.from, to: _perfCustom.to };
+  }
+  var days = parseInt(k, 10) || 0;
+  if (!days) return { from: null, to: null };              // all time
+  return { from: isoShift(today, -(days - 1)), to: today };
+}
+// Kept for callers that only need the start, or a day count.
+function perfWindowStart() { return perfRange().from; }
+function perfWindowDays() {
+  var r = perfRange();
+  return r.from && r.to ? daysBetween(r.from, r.to) + 1 : 0;
+}
+function perfInRange(dateISO) {
+  var r = perfRange(), d = dateISO || '';
+  return (!r.from || d >= r.from) && (!r.to || d <= r.to);
 }
 function perfPeriodLabel() {
-  var days = perfWindowDays();
-  if (!days) return 'All time';
-  return 'Last ' + days + ' days \u00b7 ' + plainDate(perfWindowStart()) + ' \u2013 ' + plainDate(localToday());
+  var k = perfWindowKind(), r = perfRange();
+  if (!r.from) return 'All time';
+  var span = plainDate(r.from) + ' \u2013 ' + plainDate(r.to);
+  if (k === 'custom') return span + ' \u00b7 ' + perfWindowDays() + ' day' + (perfWindowDays() === 1 ? '' : 's');
+  return 'Last ' + k + ' days \u00b7 ' + span;
 }
-var PERF_PERIODS = [['7', '7D'], ['30', '30D'], ['90', '90D'], ['0', 'All time']];
+var PERF_PERIODS = [['7', '7D'], ['30', '30D'], ['90', '90D'], ['0', 'All time'], ['custom', 'Custom']];
 function perfPeriodChips() {
-  var cur = String(perfWindowDays());
-  return '<div role="group" aria-label="Period" style="display:inline-flex; gap:2px; background:var(--surface-0); border:1px solid var(--border); border-radius:8px; padding:3px;">' +
+  var cur = perfWindowKind();
+  var chips = '<div role="group" aria-label="Period" style="display:inline-flex; gap:2px; background:var(--surface-0); border:1px solid var(--border); border-radius:8px; padding:3px;">' +
     PERF_PERIODS.map(function (p) {
       var on = p[0] === cur;
       return '<button type="button" class="dv-tab perf-win' + (on ? ' dv-tab-on' : '') + '" data-win="' + p[0] + '" ' +
         'aria-pressed="' + on + '" style="font-size:11.5px; padding:4px 10px; border:none;">' + p[1] + '</button>';
     }).join('') + '</div>';
+  if (cur !== 'custom') return chips;
+  var r = perfRange();
+  return '<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end;">' + chips +
+    '<span class="fchip" style="padding:3px 8px;">' +
+      '<input type="date" class="perf-from" aria-label="From date" value="' + escAttr(r.from) + '" max="' + escAttr(r.to) + '">' +
+      '<span class="fchip-sep">&rarr;</span>' +
+      '<input type="date" class="perf-to" aria-label="To date" value="' + escAttr(r.to) + '" min="' + escAttr(r.from) + '">' +
+    '</span></div>';
 }
 function setPerfWindow(v) {
   var sel = document.getElementById('perf-window');
@@ -5856,22 +5886,25 @@ function tsLocalTime(ts) {
 // Activity buckets that fit the period: a bar per day for 7 and 30 days,
 // a bar per week for 90 days and for all time (up to a year of weeks).
 function perfActivityBuckets(dates) {
-  var days = perfWindowDays(), today = localToday(), out = [];
+  var r = perfRange(), days = perfWindowDays(), out = [];
+  var last = r.to || localToday();
   var count = function (a, b) { return dates.filter(function (d) { return d >= a && d <= b; }).length; };
   if (days && days <= 31) {
     for (var i = days - 1; i >= 0; i--) {
-      var d = isoShift(today, -i);
+      var d = isoShift(last, -i);
       out.push({ from: d, to: d, count: count(d, d) });
     }
     return { buckets: out, unit: 'day' };
   }
   var weeks = days ? Math.ceil(days / 7) : 8;
   if (!days && dates.length) {
-    var first = dates.reduce(function (m, d) { return d < m ? d : m; }, today);
-    weeks = Math.min(52, Math.max(8, Math.ceil((daysBetween(first, today) + 1) / 7)));
+    var first = dates.reduce(function (m, d) { return d < m ? d : m; }, last);
+    weeks = Math.min(52, Math.max(8, Math.ceil((daysBetween(first, last) + 1) / 7)));
   }
   for (var w = weeks - 1; w >= 0; w--) {
-    var end = isoShift(today, -w * 7), start = isoShift(end, -6);
+    var end = isoShift(last, -w * 7), start = isoShift(end, -6);
+    // The oldest bar never reaches before the range starts.
+    if (r.from && start < r.from) start = r.from;
     out.push({ from: start, to: end, count: count(start, end) });
   }
   return { buckets: out, unit: 'week' };
@@ -5922,9 +5955,8 @@ function perfSparkline(buckets, w, h, fluid) {
 
 // Core aggregation: one row of real numbers per user.
 function computePerfRows() {
-  var since = perfWindowStart();
-  var inWin = function (dateISO) { return !since || (dateISO || '') >= since; };
-  var inWinTS = function (ts) { return !since || tsLocalDate(ts) >= since; };
+  var inWin = perfInRange;
+  var inWinTS = function (ts) { return perfInRange(tsLocalDate(ts)); };
 
   var byName = {};
   function bucket(name) {
@@ -6093,13 +6125,12 @@ function showUserProfile(name) {
   dt.style.display = '';
   dt.dataset.user = name;
 
-  var since = perfWindowStart();
-  var inWinTS = function (ts) { return !since || tsLocalDate(ts) >= since; };
+  var inWinTS = function (ts) { return perfInRange(tsLocalDate(ts)); };
   var act = perfActivityBuckets(r.logDates);
-  var days = perfWindowDays();
-  var actTitle = act.unit === 'day'
-    ? 'Activity \u00b7 per day, last ' + days + ' days'
-    : 'Activity \u00b7 per week, ' + (days ? 'last ' + days + ' days' : 'last ' + act.buckets.length + ' weeks');
+  var kind = perfWindowKind(), days = perfWindowDays();
+  var span = kind === 'custom' ? days + ' day' + (days === 1 ? '' : 's')
+           : days ? 'last ' + days + ' days' : 'last ' + act.buckets.length + ' weeks';
+  var actTitle = 'Activity \u00b7 per ' + act.unit + ', ' + span;
 
   var acts = _auditRows.filter(function (a) { return a.actor === name && inWinTS(a.created_at); }).slice(0, 25);
   var reps = _reportRows.filter(function (x) { return x.author === name && inWinTS(x.created_at); }).slice(0, 10);
@@ -6309,6 +6340,21 @@ document.addEventListener('click', function (ev) {
   setPerfWindow(b.dataset.win);
   var detail = document.getElementById('perf-detail');
   var inProfile = detail && detail.style.display !== 'none' && detail.contains(b);
+  renderPerformance();
+  if (inProfile && detail.dataset.user) showUserProfile(detail.dataset.user);
+});
+
+document.addEventListener('change', function (ev) {
+  var t = ev.target;
+  if (!t.classList || !(t.classList.contains('perf-from') || t.classList.contains('perf-to'))) return;
+  var box = t.closest('span');
+  var f = box.querySelector('.perf-from').value, to = box.querySelector('.perf-to').value;
+  if (!f || !to) return;                       // wait until both dates are set
+  if (f > to) { var x = f; f = to; to = x; }   // reversed: take it as meant
+  _perfCustom = { from: f, to: to };
+  setPerfWindow('custom');
+  var detail = document.getElementById('perf-detail');
+  var inProfile = detail && detail.style.display !== 'none' && detail.contains(t);
   renderPerformance();
   if (inProfile && detail.dataset.user) showUserProfile(detail.dataset.user);
 });
