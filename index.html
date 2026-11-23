@@ -1098,14 +1098,15 @@ html, body {
     <div class="fb-card">
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap;">
         <div style="font-size:15px; font-weight:500; margin-right:auto;">User performance</div>
-        <select id="perf-window" style="width:auto; min-width:130px; font-size:12.5px; padding:5px 26px 5px 9px;">
+        <div class="perf-period" data-host="overview"></div>
+        <select id="perf-window" aria-hidden="true" tabindex="-1" style="display:none;">
           <option value="7">Last 7 days</option>
           <option value="30" selected>Last 30 days</option>
           <option value="90">Last 90 days</option>
           <option value="0">All time</option>
         </select>
       </div>
-      <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">Activity of every user, measured from logged observations, edit history, and generated reports.</div>
+      <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">Activity of every user, measured from logged observations, edit history, and generated reports. <span id="perf-period-label" style="color:var(--text-muted);"></span></div>
 
       <div id="perf-summary" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:9px; margin-bottom:14px;"></div>
 
@@ -5806,13 +5807,74 @@ function perfDisplayName(email, id) {
   return String(id || '').slice(0, 8);
 }
 
-function perfWindowStart() {
+// The period every User Performance number is counted over. The hidden
+// #perf-window select holds it; the 7D / 30D / 90D / All time buttons on
+// the overview and on each profile only set it. Days are local days -
+// toISOString() would start the window a day early before 8 AM in Manila.
+function perfWindowDays() {
   var sel = document.getElementById('perf-window');
-  var days = parseInt((sel && sel.value) || '30', 10);
+  return parseInt((sel && sel.value) || '30', 10) || 0;     // 0 = all time
+}
+function perfWindowStart() {
+  var days = perfWindowDays();
   if (!days) return null;                     // all time
-  var d = new Date();
-  d.setDate(d.getDate() - (days - 1));
-  return d.toISOString().slice(0, 10);
+  return isoShift(localToday(), -(days - 1));
+}
+function perfPeriodLabel() {
+  var days = perfWindowDays();
+  if (!days) return 'All time';
+  return 'Last ' + days + ' days \u00b7 ' + plainDate(perfWindowStart()) + ' \u2013 ' + plainDate(localToday());
+}
+var PERF_PERIODS = [['7', '7D'], ['30', '30D'], ['90', '90D'], ['0', 'All time']];
+function perfPeriodChips() {
+  var cur = String(perfWindowDays());
+  return '<div role="group" aria-label="Period" style="display:inline-flex; gap:2px; background:var(--surface-0); border:1px solid var(--border); border-radius:8px; padding:3px;">' +
+    PERF_PERIODS.map(function (p) {
+      var on = p[0] === cur;
+      return '<button type="button" class="dv-tab perf-win' + (on ? ' dv-tab-on' : '') + '" data-win="' + p[0] + '" ' +
+        'aria-pressed="' + on + '" style="font-size:11.5px; padding:4px 10px; border:none;">' + p[1] + '</button>';
+    }).join('') + '</div>';
+}
+function setPerfWindow(v) {
+  var sel = document.getElementById('perf-window');
+  if (sel) sel.value = String(v);
+}
+// Local date and time of a stored timestamp (stored in UTC).
+function tsLocalDate(ts) {
+  if (!ts) return '';
+  var d = new Date(ts);
+  if (isNaN(d)) return String(ts).slice(0, 10);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function tsLocalTime(ts) {
+  if (!ts) return '';
+  var d = new Date(ts);
+  if (isNaN(d)) return String(ts).replace('T', ' ').slice(0, 16);
+  return tsLocalDate(ts) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+// Activity buckets that fit the period: a bar per day for 7 and 30 days,
+// a bar per week for 90 days and for all time (up to a year of weeks).
+function perfActivityBuckets(dates) {
+  var days = perfWindowDays(), today = localToday(), out = [];
+  var count = function (a, b) { return dates.filter(function (d) { return d >= a && d <= b; }).length; };
+  if (days && days <= 31) {
+    for (var i = days - 1; i >= 0; i--) {
+      var d = isoShift(today, -i);
+      out.push({ from: d, to: d, count: count(d, d) });
+    }
+    return { buckets: out, unit: 'day' };
+  }
+  var weeks = days ? Math.ceil(days / 7) : 8;
+  if (!days && dates.length) {
+    var first = dates.reduce(function (m, d) { return d < m ? d : m; }, today);
+    weeks = Math.min(52, Math.max(8, Math.ceil((daysBetween(first, today) + 1) / 7)));
+  }
+  for (var w = weeks - 1; w >= 0; w--) {
+    var end = isoShift(today, -w * 7), start = isoShift(end, -6);
+    out.push({ from: start, to: end, count: count(start, end) });
+  }
+  return { buckets: out, unit: 'week' };
 }
 
 function perfTimeAgo(iso) {
@@ -5834,20 +5896,22 @@ function perfTimeAgo(iso) {
 function perfWeeklyBuckets(dates, weeks) {
   weeks = weeks || 8;
   var out = [], now = new Date();
+  var today = localToday();
   for (var w = weeks - 1; w >= 0; w--) {
-    var end = new Date(now); end.setDate(end.getDate() - w * 7);
-    var start = new Date(end); start.setDate(start.getDate() - 6);
-    var si = start.toISOString().slice(0, 10), ei = end.toISOString().slice(0, 10);
+    var ei = isoShift(today, -w * 7), si = isoShift(ei, -6);
     out.push({ from: si, to: ei, count: dates.filter(function (d) { return d >= si && d <= ei; }).length });
   }
   return out;
 }
 
-function perfSparkline(buckets, w, h) {
+// fluid: stretch to the container's width (the profile chart).
+function perfSparkline(buckets, w, h, fluid) {
   w = w || 90; h = h || 22;
   var max = Math.max.apply(null, buckets.map(function (b) { return b.count; }).concat([1]));
   var bw = w / buckets.length;
-  return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" style="display:block;">' +
+  return '<svg width="' + (fluid ? '100%' : w) + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '"' +
+    (fluid ? ' preserveAspectRatio="none"' : '') +
+    ' style="display:block; max-width:100%;' + (fluid ? '' : ' height:auto;') + '">' +
     buckets.map(function (b, i) {
       var bh = Math.max(2, Math.round((b.count / max) * (h - 3)));
       var x = (i * bw) + 1, y = h - bh;
@@ -5860,7 +5924,7 @@ function perfSparkline(buckets, w, h) {
 function computePerfRows() {
   var since = perfWindowStart();
   var inWin = function (dateISO) { return !since || (dateISO || '') >= since; };
-  var inWinTS = function (ts) { return !since || String(ts || '').slice(0, 10) >= since; };
+  var inWinTS = function (ts) { return !since || tsLocalDate(ts) >= since; };
 
   var byName = {};
   function bucket(name) {
@@ -5950,10 +6014,19 @@ function perfFiltered() {
   return rows;
 }
 
+function renderPerfPeriodControls() {
+  Array.prototype.forEach.call(document.querySelectorAll('.perf-period'), function (host) {
+    host.innerHTML = perfPeriodChips();
+  });
+  var lbl = document.getElementById('perf-period-label');
+  if (lbl) lbl.textContent = 'Showing ' + perfPeriodLabel() + '.';
+}
+
 function renderPerformance() {
   var body = document.getElementById('perf-body');
   var empty = document.getElementById('perf-empty');
   if (!body) return;
+  renderPerfPeriodControls();
   var rows = perfFiltered();
   var all = computePerfRows();
 
@@ -6018,9 +6091,15 @@ function showUserProfile(name) {
   if (!r) return;
   if (ov) ov.style.display = 'none';
   dt.style.display = '';
+  dt.dataset.user = name;
 
   var since = perfWindowStart();
-  var inWinTS = function (ts) { return !since || String(ts || '').slice(0, 10) >= since; };
+  var inWinTS = function (ts) { return !since || tsLocalDate(ts) >= since; };
+  var act = perfActivityBuckets(r.logDates);
+  var days = perfWindowDays();
+  var actTitle = act.unit === 'day'
+    ? 'Activity \u00b7 per day, last ' + days + ' days'
+    : 'Activity \u00b7 per week, ' + (days ? 'last ' + days + ' days' : 'last ' + act.buckets.length + ' weeks');
 
   var acts = _auditRows.filter(function (a) { return a.actor === name && inWinTS(a.created_at); }).slice(0, 25);
   var reps = _reportRows.filter(function (x) { return x.author === name && inWinTS(x.created_at); }).slice(0, 10);
@@ -6040,9 +6119,13 @@ function showUserProfile(name) {
     '<div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">' +
       '<button id="perf-back" style="font-size:12.5px; padding:6px 12px;">\u2190 Back</button>' +
       '<div style="width:38px; height:38px; border-radius:50%; background:var(--accent-soft); border:1px solid var(--border-strong); display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--fb-green);">' + esc(name.slice(0, 2).toUpperCase()) + '</div>' +
-      '<div>' +
+      '<div style="margin-right:auto;">' +
         '<div style="font-size:16px; font-weight:600;">' + esc(name) + '</div>' +
         '<div style="font-size:12px; color:var(--text-secondary); text-transform:capitalize;">' + esc(r.role || 'unknown role') + (r.email ? ' \u00b7 ' + esc(r.email) : '') + '</div>' +
+      '</div>' +
+      '<div style="text-align:right;">' +
+        '<div id="perf-detail-period">' + perfPeriodChips() + '</div>' +
+        '<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">' + esc(perfPeriodLabel()) + '</div>' +
       '</div>' +
     '</div>' +
 
@@ -6056,10 +6139,14 @@ function showUserProfile(name) {
       stat('Last active', perfTimeAgo(r.lastActive), r.lastSignIn ? 'signed in ' + perfTimeAgo(r.lastSignIn) : '') +
     '</div>' +
 
-    '<div style="font-size:13px; font-weight:600; margin-bottom:6px;">Activity over the last 8 weeks</div>' +
+    '<div style="font-size:13px; font-weight:600; margin-bottom:6px;">' + esc(actTitle) + '</div>' +
     '<div style="background:var(--surface-1); border:1px solid var(--border); border-radius:9px; padding:12px; margin-bottom:16px;">' +
-      perfSparkline(perfWeeklyBuckets(r.logDates, 8), 520, 54) +
-      '<div style="font-size:11px; color:var(--text-muted); margin-top:6px;">Observations logged per week (oldest to newest).</div>' +
+      perfSparkline(act.buckets, 900, 64, true) +
+      '<div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-top:6px;">' +
+        '<span>' + esc(plainDate(act.buckets[0].from)) + '</span>' +
+        '<span>' + esc(plainDate(act.buckets[act.buckets.length - 1].to)) + '</span>' +
+      '</div>' +
+      '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Observations logged per ' + act.unit + ' \u00b7 hover a bar for its count</div>' +
     '</div>' +
 
     '<div style="font-size:13px; font-weight:600; margin-bottom:6px;">Bots covered</div>' +
@@ -6075,7 +6162,7 @@ function showUserProfile(name) {
         return '<div style="display:flex; align-items:center; gap:8px; font-size:12.5px; padding:6px 9px; background:var(--surface-1); border:1px solid var(--border); border-radius:7px;">' +
           '<span style="color:' + (actColors[a.action] || 'var(--text-secondary)') + '; font-weight:600; text-transform:capitalize; width:56px;">' + esc(a.action || '') + '</span>' +
           '<span style="flex:1;"><b>' + esc(a.robot || '\u2014') + '</b> <span style="color:var(--text-muted);">(' + esc(a.obs_date || '') + ')</span></span>' +
-          '<span style="color:var(--text-muted);">' + esc(String(a.created_at || '').replace('T', ' ').slice(0, 16)) + '</span>' +
+          '<span style="color:var(--text-muted);">' + esc(tsLocalTime(a.created_at)) + '</span>' +
           '</div>';
       }).join('') : '<div style="font-size:12.5px; color:var(--text-muted);">No recorded activity in this period.</div>') +
     '</div>' +
@@ -6085,7 +6172,7 @@ function showUserProfile(name) {
       (reps.length ? reps.map(function (x) {
         return '<div style="font-size:12.5px; padding:6px 9px; background:var(--surface-1); border:1px solid var(--border); border-radius:7px; display:flex; gap:8px;">' +
           '<span style="flex:1;">' + esc((x.period_from || '?') + ' \u2192 ' + (x.period_to || '?')) + '</span>' +
-          '<span style="color:var(--text-muted);">' + esc(String(x.created_at || '').slice(0, 10)) + '</span></div>';
+          '<span style="color:var(--text-muted);">' + esc(tsLocalDate(x.created_at)) + '</span></div>';
       }).join('') : '<div style="font-size:12.5px; color:var(--text-muted);">No reports generated in this period.</div>') +
     '</div>' +
     '</div>';
@@ -6213,6 +6300,18 @@ async function loadPerformance() {
   if (!_reportRows.length) { try { await loadReportHistory(); } catch (e) {} }
   renderPerformance();
 }
+
+// Period buttons: on the overview they redraw the table; inside a profile
+// they redraw that profile (and the table behind it) without leaving it.
+document.addEventListener('click', function (ev) {
+  var b = ev.target.closest && ev.target.closest('.perf-win');
+  if (!b) return;
+  setPerfWindow(b.dataset.win);
+  var detail = document.getElementById('perf-detail');
+  var inProfile = detail && detail.style.display !== 'none' && detail.contains(b);
+  renderPerformance();
+  if (inProfile && detail.dataset.user) showUserProfile(detail.dataset.user);
+});
 
 ['perf-search', 'perf-role', 'perf-sort', 'perf-window'].forEach(function (id) {
   var el = document.getElementById(id);
