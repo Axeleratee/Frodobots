@@ -632,6 +632,10 @@ html, body {
   .fb-app .rank-row { grid-template-columns: 24px minmax(96px, 46%) 1fr 34px; gap: 8px; }
 }
 
+/* No-data check: the observation fields stay visible but switch off. */
+.fb-app .nd-field.is-off { opacity: .45; }
+.fb-app .nd-field.is-off .ms-toggle { cursor: not-allowed; }
+
 /* Reduced motion is a hard stop, not a slowdown: no transitions, no
    keyframes, and nothing that starts without being asked. */
 @media (prefers-reduced-motion: reduce) {
@@ -699,7 +703,7 @@ html, body {
     <div style="margin-top:10px;">
       <label style="font-size:13px; display:flex; align-items:center; gap:8px; cursor:pointer;">
         <input type="checkbox" id="f-nodata" style="width:auto; margin:0;">
-        No data for this bot on this date (not evaluated)
+        No data (bot inactive / nothing to review)
       </label>
       <label style="font-size:13px; display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:7px;">
         <input type="checkbox" id="f-late" style="width:auto; margin:0;">
@@ -708,15 +712,15 @@ html, body {
     </div>
     <div id="f-detail-fields">
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:10px; margin-top:10px;">
-        <div>
+        <div class="nd-field">
           <label style="font-size:12px; color:var(--text-secondary);">Task <span style="color:var(--text-muted);">(select one or more)</span></label>
           <div id="f-task"></div>
         </div>
-        <div>
+        <div class="nd-field">
           <label style="font-size:12px; color:var(--text-secondary);">Issue type <span style="color:var(--text-muted);">(select one or more)</span></label>
           <div id="f-issue"></div>
         </div>
-        <div>
+        <div class="nd-field">
           <label style="font-size:12px; color:var(--text-secondary);">Severity % (optional)</label>
           <input type="number" id="f-severity" step="any" inputmode="decimal" placeholder="Any number, e.g. 80" style="width:100%;">
         </div>
@@ -1449,6 +1453,13 @@ html, body {
           <option value="nodata">No data (not evaluated)</option>
         </select>
       </span>
+      <span class="fchip"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
+        <select id="filter-kind" aria-label="Entry type">
+          <option value="">All entries</option>
+          <option value="obs">Observations only</option>
+          <option value="nodata">No data only</option>
+        </select>
+      </span>
       <span class="fchip"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
         <select id="filter-late" aria-label="Upload timing">
           <option value="">On-time &amp; late</option>
@@ -1592,6 +1603,12 @@ function issueList(e) {
 }
 function isLateUpload(e) { return !!e.lateUpload; }
 
+function noDataBadge(e) {
+  if (isEvaluated(e)) return '';
+  return '<span style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:1px 7px; border-radius:20px; ' +
+    'background:rgba(158,176,196,0.12); border:1px solid rgba(158,176,196,0.30); color:var(--text-secondary); white-space:nowrap;">No data</span>';
+}
+
 function lateBadge(e) {
   if (!isLateUpload(e)) return '';
   return '<span style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:1px 7px; border-radius:20px; ' +
@@ -1687,6 +1704,10 @@ class MultiSelect {
     this.menu.innerHTML = this.options.map(([v, l]) =>
       `<label class="ms-opt"><input type="checkbox" value="${escAttr(v)}"><span>${esc(l)}</span></label>`).join('');
     this.syncChecks(); this.renderLabel();
+  }
+  setDisabled(off) {
+    this.toggleBtn.disabled = !!off;
+    if (off) this.close();
   }
   getValues() { return [...this.selected]; }
   setValues(arr) { this.selected = new Set((arr || []).filter(Boolean)); this.syncChecks(); this.renderLabel(); }
@@ -4101,7 +4122,7 @@ function renderBotRanking() {
 
 // Open Logged Observations filtered to one bot and a date range.
 function openLogsForRange(bot, from, to) {
-  ['filter-robot','filter-task','filter-issue','filter-user','filter-search','filter-late'].forEach(function (id) {
+  ['filter-robot','filter-task','filter-issue','filter-user','filter-search','filter-late','filter-kind'].forEach(function (id) {
     var el = document.getElementById(id); if (el) el.value = '';
   });
   var rf = document.getElementById('filter-robot'); if (rf && bot) rf.value = bot;
@@ -4123,7 +4144,7 @@ function openLogsForRange(bot, from, to) {
 })();
 
 function focusLogsOnDate(dateISO, bot, obsId) {
-  ['filter-robot','filter-task','filter-issue','filter-user','filter-search','filter-late'].forEach(function (id) {
+  ['filter-robot','filter-task','filter-issue','filter-user','filter-search','filter-late','filter-kind'].forEach(function (id) {
     var el = document.getElementById(id); if (el) el.value = '';
   });
   if (bot) { var rf = document.getElementById('filter-robot'); if (rf) rf.value = bot; }
@@ -4841,7 +4862,10 @@ function render() {
   const userF = (document.getElementById('filter-user')||{}).value || '';
   const taskF = (document.getElementById('filter-task')||{}).value || '';
   const lateF = (document.getElementById('filter-late')||{}).value || '';
+  const kindF = (document.getElementById('filter-kind')||{}).value || '';
   let rows = entries.filter(e => {
+    if (kindF === 'obs' && !isEvaluated(e)) return false;
+    if (kindF === 'nodata' && isEvaluated(e)) return false;
     if (robotF && e.robot !== robotF) return false;
     if (issueF && !issueList(e).includes(issueF)) return false;
     if (fromF && (e.date || '') < fromF) return false;
@@ -4858,7 +4882,7 @@ function render() {
   }).sort((a,b) => b.date.localeCompare(a.date));
   _obsRows = rows;
 
-  const sig = [robotF, issueF, searchF, fromF, toF, userF, taskF, lateF].join('\u0001');
+  const sig = [robotF, issueF, searchF, fromF, toF, userF, taskF, lateF, kindF].join('\u0001');
   if (sig !== _obsSig) { _obsSig = sig; _obsLimit = OBS_PAGE; }
 
   // Header count, readable while folded: the total, or "x of y" when a
@@ -4900,7 +4924,7 @@ function render() {
 
   body.innerHTML = page.map(e => `
     <tr data-row="${escAttr(e.id)}" style="border-bottom:0.5px solid var(--border);">
-      <td style="padding:6px 8px; vertical-align:top; white-space:nowrap;">${e.date}${lateBadge(e) ? '<div style="margin-top:3px;">' + lateBadge(e) + '</div>' : ''}</td>
+      <td style="padding:6px 8px; vertical-align:top; white-space:nowrap;">${e.date}${(noDataBadge(e) || lateBadge(e)) ? '<div style="margin-top:3px; display:flex; gap:4px;">' + noDataBadge(e) + lateBadge(e) + '</div>' : ''}</td>
       <td style="padding:6px 8px; vertical-align:top;">${e.robot}</td>
       <td style="padding:6px 8px; vertical-align:top; word-break:break-word;">${taskList(e).join(', ') || '—'}</td>
       <td style="padding:6px 8px; vertical-align:top;">${issueCellText(e)}</td>
@@ -5332,9 +5356,23 @@ document.getElementById('f-robot').addEventListener('change', (e) => {
   document.getElementById('f-robot-other').style.display = e.target.value === '__other' ? 'block' : 'none';
 });
 
-document.getElementById('f-nodata').addEventListener('change', (e) => {
-  document.getElementById('f-detail-fields').style.display = e.target.checked ? 'none' : 'block';
-});
+// A no-data check records that the bot was looked at and had nothing to
+// review. Task, issue type and severity do not apply, so they switch off
+// (and are not saved); notes and links stay open for the reason.
+function applyNoDataMode() {
+  var off = document.getElementById('f-nodata').checked;
+  taskMS.setDisabled(off);
+  issueMS.setDisabled(off);
+  document.getElementById('f-severity').disabled = off;
+  Array.prototype.forEach.call(document.querySelectorAll('#f-detail-fields .nd-field'), function (el) {
+    el.classList.toggle('is-off', off);
+    el.title = off ? 'Not needed for a no-data check' : '';
+  });
+  document.getElementById('f-notes').placeholder = off
+    ? 'Optional \u2014 e.g. bot offline, no recordings uploaded'
+    : 'e.g. using right hand instead of left, off center 80-90%';
+}
+document.getElementById('f-nodata').addEventListener('change', applyNoDataMode);
 
 // What is already logged for this date + bot? Shown live in the form so you
 // never have to go look it up before typing. Multiple entries per bot per day
@@ -5417,6 +5455,7 @@ function resetForm() {
   document.getElementById('f-nodata').checked = false;
   document.getElementById('f-late').checked = false;
   document.getElementById('f-detail-fields').style.display = 'block';
+  applyNoDataMode();
   document.getElementById('f-robot-other').style.display = 'none';
   document.getElementById('f-robot-other').value = '';
   editingId = null;
@@ -5455,7 +5494,8 @@ function startEdit(id) {
   document.getElementById('f-late').checked = !!e.lateUpload;
   const nd = document.getElementById('f-nodata');
   nd.checked = !!e.noData || issueList(e).includes('nodata');
-  document.getElementById('f-detail-fields').style.display = nd.checked ? 'none' : 'block';
+  document.getElementById('f-detail-fields').style.display = 'block';
+  applyNoDataMode();
 
   taskMS.setValues(taskList(e));
   issueMS.setValues(issueList(e).filter(i => i !== 'nodata'));
@@ -5491,8 +5531,9 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   const task = noData ? [] : taskMS.getValues();
   let issue = noData ? ['nodata'] : issueMS.getValues();
   const severity = noData ? '' : document.getElementById('f-severity').value.trim();
-  const notes = noData ? '' : document.getElementById('f-notes').value.trim();
-  const links = noData ? [] : parseLinks(document.getElementById('f-links').value);
+  // Notes and links are kept on a no-data check too (the reason it had none).
+  const notes = document.getElementById('f-notes').value.trim();
+  const links = parseLinks(document.getElementById('f-links').value);
   const status = document.getElementById('save-status');
 
   if (!date || !robot) {
@@ -5578,13 +5619,13 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   el.addEventListener('input', renderDupNotice);
 });
 
-['filter-robot','filter-issue','filter-search','filter-from','filter-to','filter-user','filter-task','filter-late'].forEach(id => {
+['filter-robot','filter-issue','filter-search','filter-from','filter-to','filter-user','filter-task','filter-late','filter-kind'].forEach(id => {
   var el = document.getElementById(id);
   if (el) el.addEventListener('input', function(){ render(); renderAuditFiltered(); });
 });
 (function(){ var cw = document.getElementById('cov-window'); if (cw) cw.addEventListener('change', renderCoverage); })();
 (function(){ var fc = document.getElementById('filter-clear'); if (fc) fc.addEventListener('click', function(){
-  ['filter-robot','filter-issue','filter-search','filter-from','filter-to','filter-user','filter-task','filter-late'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  ['filter-robot','filter-issue','filter-search','filter-from','filter-to','filter-user','filter-task','filter-late','filter-kind'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   render(); renderAuditFiltered();
 }); })();
 
@@ -5986,15 +6027,17 @@ function computePerfRows() {
     var who = observerName(e);
     if (!who || !inWin(e.date)) return;
     var b = bucket(who); if (!b) return;
+    // A no-data check is counted on its own and never as an observation:
+    // it adds nothing to Observations logged, Bots covered, the activity
+    // chart, issues or severity.
+    if (!isEvaluated(e)) { b.noData++; return; }
     b.logs++;
     b.logDates.push(e.date);
     if (e.robot) b.bots[e.robot] = (b.bots[e.robot] || 0) + 1;
-    if (isEvaluated(e)) {
-      b.evaluated++;
-      if (isError(e)) b.errorsFound++;
-      var sv = Number(e.severity);
-      if (e.severity !== '' && e.severity != null && !isNaN(sv)) { b.severitySum += sv; b.severityCount++; }
-    } else { b.noData++; }
+    b.evaluated++;
+    if (isError(e)) b.errorsFound++;
+    var sv = Number(e.severity);
+    if (e.severity !== '' && e.severity != null && !isNaN(sv)) { b.severitySum += sv; b.severityCount++; }
   });
 
   _auditRows.forEach(function (a) {
@@ -6067,11 +6110,13 @@ function renderPerformance() {
   if (sum) {
     var activeUsers = all.filter(function (r) { return r.totalActions > 0; }).length;
     var totalLogs = all.reduce(function (n, r) { return n + r.logs; }, 0);
+    var totalNoData = all.reduce(function (n, r) { return n + r.noData; }, 0);
     var totalReports = all.reduce(function (n, r) { return n + r.reports; }, 0);
     var cards = [
       { label: 'Users', value: all.length },
       { label: 'Active in period', value: activeUsers },
       { label: 'Observations logged', value: totalLogs },
+      { label: 'No-data checks', value: totalNoData },
       { label: 'Reports generated', value: totalReports }
     ];
     sum.innerHTML = cards.map(function (c) {
@@ -6162,6 +6207,7 @@ function showUserProfile(name) {
 
     '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:9px; margin-bottom:16px;">' +
       stat('Observations logged', r.logs) +
+      stat('No-data checks', r.noData) +
       stat('Bots covered', r.botCount) +
       stat('Issues found', r.errorsFound, r.avgSeverity != null ? 'avg severity ' + r.avgSeverity + '%' : '') +
       stat('Edits', r.edits) +
@@ -6891,7 +6937,10 @@ function buildReportPayload({ start, end, inRange, byBot, stats, ranked }) {
 
   const summary = {
     period: { from: start || null, to: end || null },
-    totalObservations: inRange.length,
+    // Observations with data only; no-data checks are counted separately
+    // (and broken down per bot in summary.coverage).
+    totalObservations: inRange.filter(isEvaluated).length,
+    noDataChecks: inRange.filter(e => !isEvaluated(e)).length,
     lastEvaluatedByRobot: byBot,
     perRobot: Object.entries(stats).map(([bot, sMap]) => ({
       robot: bot,
